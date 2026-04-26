@@ -1,0 +1,149 @@
+"""Pydantic models for API request/response payloads and internal state."""
+
+from __future__ import annotations
+
+import enum
+import re
+from datetime import datetime, timezone
+from typing import Optional
+
+from pydantic import BaseModel, Field, field_validator
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+class DownloadStatus(str, enum.Enum):
+    """State machine: queued → downloading → completed | failed."""
+
+    QUEUED = "queued"
+    DOWNLOADING = "downloading"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+# ---------------------------------------------------------------------------
+# Request models
+# ---------------------------------------------------------------------------
+
+_KID_KEY_RE = re.compile(r"^[a-fA-F0-9]+:[a-fA-F0-9]+$")
+
+
+class DownloadRequest(BaseModel):
+    """Incoming download submission from the browser extension."""
+
+    url: str = Field(..., min_length=1, description="Download URL")
+    cookies: Optional[str] = Field(default=None, description="Raw cookie header")
+    user_agent: Optional[str] = Field(default=None, description="Custom User-Agent")
+    drm_keys: Optional[str] = Field(
+        default=None, description="KID:KEY hex pair for DRM decryption"
+    )
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("URL must not be empty")
+        # Accept http, https, ftp, and magnet schemes
+        if not re.match(r"^(https?|ftp|magnet):", v, re.IGNORECASE):
+            raise ValueError(
+                "URL must start with http://, https://, ftp://, or magnet:"
+            )
+        return v
+
+    @field_validator("drm_keys")
+    @classmethod
+    def validate_drm_keys(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not _KID_KEY_RE.match(v):
+            raise ValueError(
+                "drm_keys must be formatted as KID:KEY "
+                "(hexadecimal strings separated by a colon)"
+            )
+        return v
+
+
+# ---------------------------------------------------------------------------
+# Internal job model
+# ---------------------------------------------------------------------------
+
+class DownloadJob(BaseModel):
+    """Tracks an active or completed download."""
+
+    id: str
+    url: str
+    engine: str
+    status: DownloadStatus = DownloadStatus.QUEUED
+    progress: Optional[float] = None
+    speed: Optional[str] = None
+    output_path: Optional[str] = None
+    file_size: Optional[int] = None
+    error: Optional[str] = None
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    aria2_gid: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Response models
+# ---------------------------------------------------------------------------
+
+class DownloadResponse(BaseModel):
+    """Response returned when a download is accepted."""
+
+    id: str
+    status: str
+    engine: str
+    message: str = "Download request accepted"
+
+
+class StatusResponse(BaseModel):
+    """Response for GET /api/download/{id}."""
+
+    id: str
+    url: str
+    engine: str
+    status: str
+    progress: Optional[float] = None
+    speed: Optional[str] = None
+    output_path: Optional[str] = None
+    file_size: Optional[int] = None
+    error: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ErrorDetail(BaseModel):
+    """Single field-level validation error."""
+
+    field: str
+    message: str
+
+
+class ErrorResponse(BaseModel):
+    """Standardised error response body."""
+
+    error_code: str
+    message: str
+    details: list[ErrorDetail] = Field(default_factory=list)
+
+
+class EngineHealth(BaseModel):
+    """Health status for a single engine."""
+
+    name: str
+    available: bool
+    version: Optional[str] = None
+    error: Optional[str] = None
+
+
+class HealthResponse(BaseModel):
+    """Response for GET /api/health."""
+
+    status: str  # "healthy" or "degraded"
+    uptime_seconds: float
+    engines: list[EngineHealth]
