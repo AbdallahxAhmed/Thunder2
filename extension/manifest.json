@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "UHDD Browser Interceptor",
+  "version": "1.0",
+  "description": "Intercepts DRM manifests (.mpd) and Widevine keys (KID:KEY), dispatching them to the local UHDD daemon.",
+  "permissions": [
+    "notifications"
+  ],
+  "host_permissions": [
+    "*://*/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "content_scripts/eme_hook.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "content_scripts/bridge.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

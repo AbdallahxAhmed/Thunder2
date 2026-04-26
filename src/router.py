@@ -50,14 +50,27 @@ KNOWN_MEDIA_DOMAINS: set[str] = {
 }
 
 
-def classify(url: str, drm_keys: Optional[str] = None) -> str:
-    """Return the engine name for the given URL and optional DRM keys.
+def classify(
+    url: str,
+    drm_keys: Optional[str] = None,
+    pssh: Optional[str] = None,
+    license_url: Optional[str] = None,
+) -> str:
+    """Return the engine name for the given URL and optional DRM metadata.
 
     Returns one of: ``"m3u8"``, ``"ytdlp"``, ``"aria2"``.
     """
     # Rule 1: explicit DRM keys → always N_m3u8DL-RE
     if drm_keys:
         logger.debug("Route → m3u8 (drm_keys present)", extra={"event": "route.drm"})
+        return "m3u8"
+
+    # Rule 1b: PSSH + license URL → CDM negotiation then N_m3u8DL-RE
+    if pssh and license_url:
+        logger.debug(
+            "Route → m3u8 (pssh + license_url → CDM negotiation)",
+            extra={"event": "route.drm_proxy"},
+        )
         return "m3u8"
 
     parsed = urlparse(url)
@@ -84,3 +97,4 @@ def classify(url: str, drm_keys: Optional[str] = None) -> str:
     # Rule 5: everything else → aria2
     logger.debug("Route → aria2 (default)", extra={"event": "route.default"})
     return "aria2"
+

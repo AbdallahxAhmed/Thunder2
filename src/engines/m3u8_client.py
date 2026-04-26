@@ -2,6 +2,9 @@
 
 Invoked via ``subprocess.run()`` per constitution Principle III.
 Runs synchronously and must be called via ``asyncio.to_thread()``.
+
+v2: Integrates with WidevineCDM for server-side key negotiation when
+    PSSH + license_url are provided instead of pre-extracted drm_keys.
 """
 
 from __future__ import annotations
@@ -30,15 +33,78 @@ class M3u8Client:
         url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
         return f"drm_{url_hash}"
 
+    def _resolve_keys(self, request: DownloadRequest) -> list[str]:
+        """Resolve KID:KEY pairs — either from drm_keys or CDM negotiation.
+
+        Returns a list of 'KID:KEY' strings.
+        """
+        # Path A: Pre-extracted keys supplied directly
+        if request.drm_keys:
+            keys = [
+                pair.strip()
+                for pair in request.drm_keys.split(",")
+                if pair.strip()
+            ]
+            logger.info(
+                "Using %d pre-extracted key(s)",
+                len(keys),
+                extra={"event": "keys.pre_extracted"},
+            )
+            return keys
+
+        # Path B: CDM negotiation via pywidevine
+        if request.pssh and request.license_url:
+            from src.engines.widevine_cdm import widevine_cdm
+
+            logger.info(
+                "Negotiating keys via pywidevine for %s",
+                request.license_url,
+                extra={"event": "keys.cdm_negotiation"},
+            )
+            try:
+                keys = widevine_cdm.negotiate_keys(
+                    pssh_b64=request.pssh,
+                    license_url=request.license_url,
+                    license_headers=request.license_headers,
+                )
+                return keys
+            except Exception as exc:
+                logger.error(
+                    "CDM negotiation failed: %s",
+                    exc,
+                    extra={"event": "keys.cdm_failed"},
+                )
+                raise
+
+        # No keys available
+        return []
+
     def execute(self, job: DownloadJob, request: DownloadRequest) -> dict:
         """Run a DRM download end-to-end (blocking).
 
-        Constructs and runs the N_m3u8DL-RE command, captures output,
-        and returns a result dict.
+        1. Resolve keys (pre-extracted or CDM negotiation)
+        2. Build N_m3u8DL-RE command with --key flags
+        3. Execute subprocess and capture output
         """
         save_dir = os.path.abspath(self.download_dir)
         save_name = self._generate_save_name(request.url)
 
+        # ── Step 1: Resolve keys ──────────────────────────────────────
+        try:
+            keys = self._resolve_keys(request)
+        except Exception as exc:
+            error_msg = f"Key resolution failed: {exc}"
+            logger.error(
+                error_msg,
+                extra={
+                    "download_id": job.id,
+                    "engine": "m3u8",
+                    "event": "download.failed",
+                },
+            )
+            return {"status": "failed", "error": error_msg}
+
+        # ── Step 2: Build command ─────────────────────────────────────
         cmd: list[str] = [
             "N_m3u8DL-RE",
             request.url,
@@ -48,12 +114,13 @@ class M3u8Client:
             "--del-after-done",
         ]
 
-        # Add --key only if drm_keys are provided
-        if request.drm_keys:
-            cmd.extend(["--key", request.drm_keys])
-        else:
+        # Add --key for each resolved key pair
+        for key_pair in keys:
+            cmd.extend(["--key", key_pair])
+
+        if not keys:
             logger.warning(
-                "N_m3u8DL-RE invoked without drm_keys for %s — decryption may fail",
+                "N_m3u8DL-RE invoked without keys for %s — decryption will fail",
                 request.url,
                 extra={
                     "download_id": job.id,
@@ -63,8 +130,9 @@ class M3u8Client:
             )
 
         logger.info(
-            "N_m3u8DL-RE starting: %s",
+            "N_m3u8DL-RE starting: %s with %d key(s)",
             job.id,
+            len(keys),
             extra={
                 "download_id": job.id,
                 "engine": "m3u8",
@@ -72,6 +140,7 @@ class M3u8Client:
             },
         )
 
+        # ── Step 3: Execute ───────────────────────────────────────────
         try:
             result = subprocess.run(
                 cmd, capture_output=True, text=True, timeout=3600
@@ -158,3 +227,4 @@ class M3u8Client:
                 },
             )
             return {"status": "failed", "error": error_msg}
+

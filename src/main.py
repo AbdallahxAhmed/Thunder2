@@ -205,7 +205,12 @@ async def _execute_download(job_id: str, request: DownloadRequest) -> None:
 @app.post("/api/download", status_code=202, response_model=DownloadResponse)
 async def submit_download(request: DownloadRequest) -> JSONResponse:
     """Accept a download request, classify, and dispatch to the right engine."""
-    engine_name = classify(request.url, request.drm_keys)
+    engine_name = classify(
+        request.url,
+        drm_keys=request.drm_keys,
+        pssh=request.pssh,
+        license_url=request.license_url,
+    )
 
     # Check engine availability
     engine_status = next(

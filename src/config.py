@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     host: str = "0.0.0.0"
     port: int = 8000
+    wvd_path: str = ""  # Path to Widevine Device (.wvd) file for CDM negotiation
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

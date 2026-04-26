@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 import re
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -36,7 +36,16 @@ class DownloadRequest(BaseModel):
     cookies: Optional[str] = Field(default=None, description="Raw cookie header")
     user_agent: Optional[str] = Field(default=None, description="Custom User-Agent")
     drm_keys: Optional[str] = Field(
-        default=None, description="KID:KEY hex pair for DRM decryption"
+        default=None, description="KID:KEY hex pair(s) for DRM decryption (comma-separated for multiple)"
+    )
+    pssh: Optional[str] = Field(
+        default=None, description="Base64-encoded PSSH for Widevine CDM negotiation"
+    )
+    license_url: Optional[str] = Field(
+        default=None, description="License server URL for Widevine CDM negotiation"
+    )
+    license_headers: Optional[dict[str, Any]] = Field(
+        default=None, description="HTTP headers for the license server request"
     )
 
     @field_validator("url")
@@ -55,11 +64,16 @@ class DownloadRequest(BaseModel):
     @field_validator("drm_keys")
     @classmethod
     def validate_drm_keys(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and not _KID_KEY_RE.match(v):
-            raise ValueError(
-                "drm_keys must be formatted as KID:KEY "
-                "(hexadecimal strings separated by a colon)"
-            )
+        if v is not None:
+            # Support comma-separated multi-key format: KID1:KEY1,KID2:KEY2
+            for pair in v.split(","):
+                pair = pair.strip()
+                if pair and not _KID_KEY_RE.match(pair):
+                    raise ValueError(
+                        "drm_keys must be formatted as KID:KEY "
+                        "(hexadecimal strings separated by a colon). "
+                        "Multiple pairs separated by commas."
+                    )
         return v
 
 

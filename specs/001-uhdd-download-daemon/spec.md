@@ -41,20 +41,21 @@ A user navigates to a YouTube or Twitter video page. The browser extension captu
 
 ---
 
-### User Story 3 - Download a DRM-Encrypted Stream (Priority: P3)
+### User Story 3 - Download a DRM-Encrypted Stream via License Proxy (Priority: P3)
 
-A user wants to download a Widevine-encrypted HLS/DASH stream. They supply the manifest URL along with the `KID:KEY` decryption pair through the browser extension. The daemon detects the presence of `drm_keys` (or a `.mpd` URL), routes the request to the N_m3u8DL-RE engine, and downloads + decrypts + muxes the stream into a playable file.
+The browser extension captures the `.mpd` manifest URL, the PSSH from the page's EME pipeline, the License Server URL, and the associated request headers. It sends this package to the daemon. The daemon uses `pywidevine` with a local `.wvd` (Widevine Device) file to negotiate with the license server, extract plaintext `KID:KEY` pairs, and pass them to `N_m3u8DL-RE` for decrypted download. Alternatively, a user can still supply pre-extracted `drm_keys` (KID:KEY) directly for manual overrides.
 
-**Why this priority**: DRM-encrypted streams are a specialized but critical use case. This validates the isolated DRM pipeline, ensuring it operates independently from the standard download and media paths.
+**Why this priority**: DRM-encrypted streams are a specialized but critical use case. Server-side CDM negotiation is required because the browser's CDM encrypts the content key internally, making client-side extraction impossible.
 
-**Independent Test**: Submit a manifest URL with a valid `KID:KEY` pair via the API and verify that a decrypted, playable media file appears in the `downloads/` directory.
+**Independent Test**: Submit a manifest URL with a PSSH, license server URL, and headers via the API. Verify that the daemon negotiates keys, and a decrypted, playable media file appears in the `downloads/` directory.
 
 **Acceptance Scenarios**:
 
-1. **Given** the daemon is running, **When** a POST request is sent with `drm_keys` present, **Then** the system routes the request to the N_m3u8DL-RE engine regardless of the URL pattern.
-2. **Given** a request contains a `.mpd` URL without `drm_keys`, **When** the request is processed, **Then** the system routes it to the N_m3u8DL-RE engine.
-3. **Given** N_m3u8DL-RE completes successfully, **When** decryption and muxing finish, **Then** the output file is saved to the `downloads/` directory and temporary chunks are cleaned up.
-4. **Given** the `drm_keys` are invalid or the manifest URL is unreachable, **When** N_m3u8DL-RE fails, **Then** the system captures the error output, logs it, and returns a structured error response without crashing the daemon or affecting other downloads.
+1. **Given** the daemon is running with a valid `.wvd` file, **When** a POST request is sent with `pssh`, `license_url`, and `license_headers`, **Then** the system uses `pywidevine` to negotiate plaintext keys and routes the download to N_m3u8DL-RE.
+2. **Given** a request contains pre-extracted `drm_keys` (KID:KEY), **When** the request is processed, **Then** the system skips CDM negotiation and passes the keys directly to N_m3u8DL-RE.
+3. **Given** a request contains a `.mpd` URL without `drm_keys` or `pssh`, **When** the request is processed, **Then** the system routes it to the N_m3u8DL-RE engine (which may fail without keys, logged as an error).
+4. **Given** N_m3u8DL-RE completes successfully, **When** decryption and muxing finish, **Then** the output file is saved to the `downloads/` directory and temporary chunks are cleaned up.
+5. **Given** `pywidevine` CDM negotiation fails (invalid PSSH, license server rejection, missing `.wvd` file), **When** the error occurs, **Then** the system logs a descriptive error and the job is marked as failed.
 
 ---
 
@@ -87,13 +88,14 @@ A user wants to know the progress of a previously submitted download. They query
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST expose a single unified endpoint (`POST /api/download`) that accepts JSON payloads containing `url` (required), `cookies` (optional), `user_agent` (optional), and `drm_keys` (optional, formatted as `KID:KEY`).
-- **FR-002**: The system MUST route requests to the correct engine based on deterministic rules: `drm_keys` present OR `.mpd` URL → N_m3u8DL-RE; URL matches known media sites OR `.m3u8` (without DRM keys) → yt-dlp; all others → aria2.
+- **FR-001**: The system MUST expose a single unified endpoint (`POST /api/download`) that accepts JSON payloads containing `url` (required), `cookies` (optional), `user_agent` (optional), `drm_keys` (optional, formatted as `KID:KEY`), `pssh` (optional, base64-encoded PSSH), `license_url` (optional, license server URL), and `license_headers` (optional, dict of HTTP headers).
+- **FR-001b**: When `pssh` and `license_url` are present (and `drm_keys` is absent), the system MUST use `pywidevine` with a local `.wvd` file to negotiate with the license server and extract plaintext `KID:KEY` pairs before dispatching to `N_m3u8DL-RE`.
+- **FR-002**: The system MUST route requests to the correct engine based on deterministic rules: `drm_keys` present OR `pssh`+`license_url` present OR `.mpd` URL → N_m3u8DL-RE; URL matches known media sites OR `.m3u8` (without DRM keys/PSSH) → yt-dlp; all others → aria2.
 - **FR-003**: The system MUST return a unique download identifier in the acknowledgment response for every accepted request.
 - **FR-004**: The system MUST provide a status endpoint (`GET /api/download/{id}`) returning the current state and progress of a download.
 - **FR-005**: The aria2 engine MUST use 16 parallel connections per download and forward `user_agent` and `cookies` from the request payload.
 - **FR-006**: The yt-dlp engine MUST download the best available video + audio streams and mux them into a single `.mp4` or `.mkv` file.
-- **FR-007**: The N_m3u8DL-RE engine MUST accept the manifest URL and `KID:KEY` pair, select the best tracks automatically, and clean up temporary files after completion.
+- **FR-007**: The N_m3u8DL-RE engine MUST accept the manifest URL and `KID:KEY` pair(s), select the best tracks automatically, and clean up temporary files after completion. Multiple `--key` flags MUST be supported when multiple keys are extracted (e.g., separate video and audio keys).
 - **FR-008**: All downloads MUST be saved to a unified `downloads/` directory.
 - **FR-009**: All log output MUST be written in structured JSON format to a `logs/` directory.
 - **FR-010**: The system MUST perform engine availability health checks at startup and expose a health endpoint (`GET /api/health`) reporting which engines are operational.
@@ -124,8 +126,10 @@ A user wants to know the progress of a previously submitted download. They query
 - The aria2 daemon (`aria2c`) is pre-installed and running on the same host with RPC enabled.
 - The `N_m3u8DL-RE` binary is pre-installed and available on the system PATH.
 - `ffmpeg` is pre-installed for yt-dlp muxing operations.
-- The browser extension (client side) is out of scope for this specification — it will be handled in a separate project phase.
-- Users provide valid `KID:KEY` pairs for DRM streams; the daemon does not derive or crack keys.
+- The browser extension (Feature 002) captures and forwards license metadata to the daemon.
+- Users may provide pre-extracted `KID:KEY` pairs OR the extension provides `pssh` + `license_url` + `license_headers` for server-side CDM negotiation.
+- A valid `.wvd` (Widevine Device) file is required for CDM negotiation and must be configured via `WVD_PATH` in `.env`.
+- `pywidevine` is added as a Python dependency for Widevine CDM negotiation.
 - The daemon runs on a single host; distributed/clustered deployment is out of scope for v1.
 - The system targets Linux as the primary platform; macOS is best-effort; Windows is out of scope.
 - Headless JDownloader 2 integration is reserved for a future v2.0 release and excluded from this specification.
