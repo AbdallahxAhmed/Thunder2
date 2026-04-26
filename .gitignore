@@ -40,3 +40,6 @@ coverage.xml
 
 # Specify
 .specify/memory/
+downloads/
+drm_*/
+*.tmp
