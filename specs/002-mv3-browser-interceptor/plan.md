@@ -155,8 +155,8 @@ if (message.type === "getFormats") {
 - Append host strictly to `document.documentElement`.
 
 #### 3c. Ghost Overlay Tracking System
-- **Code Purge Mandate**: Surgically remove all legacy code related to the floating button's position calculation, mouse events (`mousedown`, `mousemove`, `mouseup`), and `chrome.storage.local` coordination.
-- **Legacy Ban**: NO Euclidean math (`Math.hypot`).
+- **Draggable Ghost Overlay**: Implements `dragOffset` with `mousedown`, `mousemove`, and `mouseup` to directly offset the coordinates of the `position: absolute` button. Uses `Math.hypot` to differentiate drag vs click.
+- **Legacy Ban**: CSS variables for positioning (`var(--btn-x)`) are strictly forbidden.
 - Create `trackVideo(videoElement)` function:
   - **Anchor & Track**: Uses `getBoundingClientRect()` on the video to calculate precise coordinates.
   - Applies coordinates to the button via CSS `transform` or `top`/`left`.

@@ -15,6 +15,7 @@ let host = null;
 
 let isTracking = false;
 let rafId = null;
+let dragOffset = { x: -60, y: 20 };
 
 const downloadIcon = `
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -70,12 +71,47 @@ function initializeSystem() {
   
   shadowRoot.appendChild(floatBtn);
 
-  // Click logic (No dragging or Math.hypot)
-  floatBtn.addEventListener('click', (e) => {
+  // Draggable Ghost Overlay Logic
+  let isDragging = false;
+  let startX, startY;
+  let startOffsetX, startOffsetY;
+
+  floatBtn.addEventListener('mousedown', (e) => {
     e.stopPropagation();
-    toggleDropdown();
-    if (activeDropdown && !formatsLoaded) {
-      fetchFormatsFromBackground();
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startOffsetX = dragOffset.x;
+    startOffsetY = dragOffset.y;
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    e.stopPropagation();
+    
+    // Calculate deltas
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    
+    // Update global offset
+    dragOffset.x = startOffsetX + dx;
+    dragOffset.y = startOffsetY + dy;
+    
+    schedulePositionUpdate();
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    e.stopPropagation();
+    
+    const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+    if (dist < 5) {
+      // It was a click
+      toggleDropdown();
+      if (activeDropdown && !formatsLoaded) {
+        fetchFormatsFromBackground();
+      }
     }
   });
 
@@ -229,14 +265,14 @@ function applyPositionUpdate() {
 
   const rect = targetVideo.getBoundingClientRect();
   
-  // Anchor to top-right of the video with 16px padding
-  let leftPos = rect.right - 60;
-  if (leftPos < 0) leftPos = rect.left + 16;
-  let topPos = rect.top + 16;
-  
-  // Apply hardware-accelerated transform via CSS vars to avoid :active layout thrashing
-  host.style.setProperty('--btn-x', `${leftPos}px`);
-  host.style.setProperty('--btn-y', `${topPos}px`);
+  let leftPos = rect.right + dragOffset.x;
+  let topPos = rect.top + dragOffset.y;
+
+  if (leftPos < 0) leftPos = 0;
+  if (topPos < 0) topPos = 0;
+
+  floatBtn.style.left = `${leftPos}px`;
+  floatBtn.style.top = `${topPos}px`;
 
   // Update dropdown position if active
   if (activeDropdown) {
@@ -261,9 +297,8 @@ function toggleDropdown() {
   
   // Initial position calculation
   const rect = targetVideo.getBoundingClientRect();
-  let leftPos = rect.right - 60;
-  if (leftPos < 0) leftPos = rect.left + 16;
-  let topPos = rect.top + 16;
+  let leftPos = rect.right + dragOffset.x;
+  let topPos = rect.top + dragOffset.y;
   
   let dropLeft = leftPos - 276;
   if (dropLeft < 0) dropLeft = leftPos;

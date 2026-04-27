@@ -45,8 +45,8 @@
 - [ ] T007 [P] [US5] Add `content_scripts` block for `content.js` and `content.css` to `extension/manifest.json`.
 - [ ] T008 [P] [US5] Update `getFormats` message handler in `extension/background.js` to fallback to `sender.tab.id` and `sender.tab.url`.
 - [ ] T009 [P] [US5] Create `extension/content.css` with scoped dark-theme styles for floating button and dropdown (`--uhdd-*` prefixed).
-- [x] T010 [US5] Code Purge: Surgically remove ALL legacy code related to the floating button's position calculation, mouse events (mousedown, mousemove, mouseup), and chrome.storage.local coordination from `extension/content.js`.
-- [x] T011 [US5] Implement Ghost Overlay Tracking System with root-level injection to `document.documentElement` and absolute ghosting (`position: fixed`, `z-index: 2147483647`).
+- [x] T010 [US5] Code Purge: Surgically remove legacy CSS positioning variables to prepare for absolute coordinate tracking.
+- [x] T011 [US5] Implement Draggable Ghost Overlay Tracking System with root-level injection to `document.documentElement`, absolute positioning (`left`/`top`), and drag offsets.
 - [x] T012 [US5] Implement Anchor & Track with Anti-Jank Observers (`ResizeObserver`, `IntersectionObserver`, window `scroll` events) synced via `window.requestAnimationFrame`.
 - [x] T013 [US5] Implement Dynamic DOM Resilience using `MutationObserver` to detect `<video>` replacement.
 
