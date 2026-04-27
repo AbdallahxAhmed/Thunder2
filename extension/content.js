@@ -3,10 +3,7 @@
  * Strictly injects body-level UI in the top frame only and tracks the video element.
  */
 
-if (window !== window.top) {
-  // Prevent iframe spam
-  throw new Error("UHDD content script aborting in iframe.");
-}
+
 
 const DAEMON_URL = "http://localhost:8000";
 let floatBtn = null;
@@ -25,10 +22,8 @@ const downloadIcon = `
 </svg>
 `;
 
-document.addEventListener('DOMContentLoaded', initializeSystem);
-if (document.readyState === 'interactive' || document.readyState === 'complete') {
-  initializeSystem();
-}
+// Start Video Discovery (Silent Lazy Injection)
+startVideoObserver();
 
 function initializeSystem() {
   if (document.getElementById('uhdd-host')) return;
@@ -95,8 +90,6 @@ function initializeSystem() {
     }
   });
 
-  // 2. Start Video Discovery
-  startVideoObserver();
 }
 
 // ─── DYNAMIC DOM HANDLING & MUTATION OBSERVER ──────────────────────────────
@@ -165,6 +158,7 @@ let resizeObserver = null;
 let intersectionObserver = null;
 
 function trackVideo(videoElement) {
+  if (!host) initializeSystem();
   if (isTracking) untrackVideo();
   targetVideo = videoElement;
   isTracking = true;
