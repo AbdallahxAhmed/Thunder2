@@ -107,6 +107,39 @@ function injectUI() {
 function setupInteractions() {
   floatingBtn.addEventListener("mousedown", onMouseDown);
   
+  // Implement Event Delegation for the download buttons
+  uiContainer.addEventListener('click', (e) => {
+    const btn = e.target.closest('.download-btn');
+    if (!btn) return; // Ignore clicks outside buttons
+    
+    const url = btn.getAttribute('data-url');
+    const formatId = btn.getAttribute('data-format-id');
+    
+    // Visual feedback
+    btn.textContent = 'Starting...';
+    btn.style.opacity = '0.7';
+    btn.style.pointerEvents = 'none';
+
+    // Dispatch to Background Script (Dumb UI -> Smart Engine)
+    chrome.runtime.sendMessage({
+      action: "TRIGGER_DOWNLOAD",
+      payload: { url: url || window.location.href, format_id: formatId, engine: "ytdlp" }
+    }, (response) => {
+      if (chrome.runtime.lastError || (response && !response.ok)) {
+        console.error(`${LOG} Download trigger failed`);
+        btn.textContent = 'Failed';
+        btn.style.color = 'var(--uhdd-error)';
+        return;
+      }
+      dropdown.classList.remove("open");
+      const indicator = floatingBtn.querySelector(".status-indicator");
+      indicator.classList.add("visible");
+      setTimeout(() => {
+        indicator.classList.remove("visible");
+      }, 2000);
+    });
+  });
+
   // Close dropdown when clicking outside
   document.addEventListener("mousedown", (e) => {
     if (dropdown.classList.contains("open")) {
@@ -227,40 +260,17 @@ function renderFormats(data) {
         <span class="format-res">${opt.format_note || opt.resolution || 'Audio'}</span>
         <span class="format-details">${ext.toUpperCase()} • ${size} • ${opt.vcodec !== 'none' ? opt.vcodec : opt.acodec}</span>
       </div>
-      ${badgeHtml}
+      <div style="display: flex; align-items: center; gap: 8px;">
+        ${badgeHtml}
+        <button class="download-btn" data-url="${data.url}" data-format-id="${opt.format_id}">Download</button>
+      </div>
     `;
 
-    // CSP COMPLIANCE: No inline onclick attributes. Use addEventListener.
-    item.addEventListener("click", () => triggerDownload(opt.format_id, data.url));
     dropdown.appendChild(item);
   });
 }
 
-function triggerDownload(formatId, url) {
-  console.log(`${LOG} Dispatching download via SW...`);
-  dropdown.classList.remove("open");
-  
-  const payload = {
-    url: url || window.location.href,
-    engine: "ytdlp",
-    format_id: formatId
-  };
 
-  // DUMB UI ENFORCEMENT: Strictly send message to background.js
-  chrome.runtime.sendMessage({ action: "TRIGGER_DOWNLOAD", payload: payload }, (response) => {
-    if (chrome.runtime.lastError || (response && !response.ok)) {
-      console.error(`${LOG} Download trigger failed`);
-      return;
-    }
-    
-    // Show success indicator
-    const indicator = floatingBtn.querySelector(".status-indicator");
-    indicator.classList.add("visible");
-    setTimeout(() => {
-      indicator.classList.remove("visible");
-    }, 2000);
-  });
-}
 
 // Start lazy injection process
 init();
