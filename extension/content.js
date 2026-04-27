@@ -1,8 +1,3 @@
-// Only run in the top-level frame — prevents the button from injecting
-// inside player iframes (e.g. geo.dailymotion.com/player/…) which would
-// send an unsupported embed URL instead of the real page URL.
-if (window !== window.top) return;
-
 const LOG = "[UHDD UI]";
 
 // The Ghost UI State
