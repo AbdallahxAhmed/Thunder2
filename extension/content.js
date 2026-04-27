@@ -1,6 +1,6 @@
 /**
- * UHDD Content Script — Ghost Overlay Tracking System
- * Strictly injects body-level UI in the top frame only and tracks the video element.
+ * UHDD Content Script — Shadow DOM Floating UI
+ * Strictly injects body-level UI in the top frame only.
  */
 
 if (window !== window.top) {
@@ -13,11 +13,6 @@ let floatBtn = null;
 let activeDropdown = null;
 let formatsLoaded = false;
 let shadowRoot = null;
-let targetVideo = null;
-let host = null;
-
-let isTracking = false;
-let rafId = null;
 
 const downloadIcon = `
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -25,21 +20,21 @@ const downloadIcon = `
 </svg>
 `;
 
-document.addEventListener('DOMContentLoaded', initializeSystem);
+document.addEventListener('DOMContentLoaded', injectShadowUI);
 if (document.readyState === 'interactive' || document.readyState === 'complete') {
-  initializeSystem();
+  injectShadowUI();
 }
 
-function initializeSystem() {
+function injectShadowUI() {
   if (document.getElementById('uhdd-host')) return;
-  if (!document.documentElement) {
-    requestAnimationFrame(initializeSystem);
+  if (!document.body) {
+    requestAnimationFrame(injectShadowUI);
     return;
   }
 
-  // 1. Root-Level Host Injection
-  host = document.createElement('div');
+  const host = document.createElement('div');
   host.id = 'uhdd-host';
+  // Host covers the entire viewport but doesn't block clicks
   host.style.cssText = `
     position: fixed !important;
     top: 0 !important;
@@ -53,30 +48,30 @@ function initializeSystem() {
     margin: 0 !important;
     padding: 0 !important;
   `;
-  document.documentElement.appendChild(host);
+  document.body.appendChild(host);
 
   shadowRoot = host.attachShadow({ mode: 'closed' });
 
-  // Inject CSS safely via web_accessible_resources
+  // 1. Inject CSS safely via web_accessible_resources
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = chrome.runtime.getURL('content.css');
   shadowRoot.appendChild(link);
 
-  // Create Floating Button (Hidden by default)
+  // 2. Create Floating Button
   floatBtn = document.createElement('button');
   floatBtn.className = 'floating-btn';
   floatBtn.innerHTML = downloadIcon;
-  floatBtn.title = "Download with UHDD";
-  floatBtn.style.position = 'absolute';
-  floatBtn.style.display = 'none';
-  floatBtn.style.pointerEvents = 'auto'; // allow clicks
-  floatBtn.style.top = '0';
-  floatBtn.style.left = '0';
+  floatBtn.title = "Drag to move. Click to download formats.";
   
+  // Default position
+  floatBtn.style.position = 'absolute';
+  floatBtn.style.top = '20px';
+  floatBtn.style.left = (window.innerWidth - 64) + 'px';
+
   shadowRoot.appendChild(floatBtn);
 
-  // Click logic (No dragging or Math.hypot)
+  // 3. Click Logic (Legacy drag-and-drop purged)
   floatBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     toggleDropdown();
@@ -85,160 +80,17 @@ function initializeSystem() {
     }
   });
 
-  // Click outside to close dropdown
+  // 4. Click outside to close
   document.addEventListener('mousedown', (e) => {
     if (activeDropdown) {
+      // event.composedPath() works across shadow boundaries
       const path = e.composedPath();
       if (!path.includes(activeDropdown) && !path.includes(floatBtn)) {
         closeDropdown();
       }
     }
   });
-
-  // 2. Start Video Discovery
-  startVideoObserver();
 }
-
-// ─── DYNAMIC DOM HANDLING & MUTATION OBSERVER ──────────────────────────────
-
-function startVideoObserver() {
-  scanForVideos();
-
-  // Watch for dynamic video element creation/destruction (e.g., YouTube ad breaks)
-  const observer = new MutationObserver((mutations) => {
-    let shouldScan = false;
-    for (const m of mutations) {
-      if (m.addedNodes.length > 0 || m.removedNodes.length > 0) {
-        shouldScan = true;
-        break;
-      }
-    }
-    // If the tracked video was removed from the DOM, untrack and scan again
-    if (targetVideo && !document.contains(targetVideo)) {
-      untrackVideo();
-      shouldScan = true;
-    }
-    if (shouldScan && !isTracking) {
-      scanForVideos();
-    }
-  });
-  
-  observer.observe(document.body, { childList: true, subtree: true });
-}
-
-function scanForVideos() {
-  const videos = document.querySelectorAll('video');
-  let bestVideo = null;
-  let maxArea = 0;
-  
-  for (const v of videos) {
-    const rect = v.getBoundingClientRect();
-    const area = rect.width * rect.height;
-    if (area > maxArea && area > 10000) { // Ignore tiny 1x1 tracking videos
-      maxArea = area;
-      bestVideo = v;
-    }
-  }
-
-  if (bestVideo && bestVideo !== targetVideo) {
-    trackVideo(bestVideo);
-  }
-}
-
-// ─── GHOST OVERLAY TRACKING SYSTEM ───────────────────────────────────────
-
-let resizeObserver = null;
-let intersectionObserver = null;
-
-function trackVideo(videoElement) {
-  if (isTracking) untrackVideo();
-  targetVideo = videoElement;
-  isTracking = true;
-
-  // 1. ResizeObserver: Track video dimension changes
-  resizeObserver = new ResizeObserver(() => {
-    schedulePositionUpdate();
-  });
-  resizeObserver.observe(targetVideo);
-
-  // 2. IntersectionObserver: Hide button when video is out of viewport
-  intersectionObserver = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (entry.isIntersecting) {
-        floatBtn.style.display = 'flex';
-        schedulePositionUpdate();
-      } else {
-        floatBtn.style.display = 'none';
-        closeDropdown(); // Close if open
-      }
-    }
-  }, { threshold: 0.1 });
-  intersectionObserver.observe(targetVideo);
-
-  // 3. Scroll & Resize sync
-  window.addEventListener('scroll', schedulePositionUpdate, true); // capture phase
-  window.addEventListener('resize', schedulePositionUpdate);
-  
-  schedulePositionUpdate();
-}
-
-function untrackVideo() {
-  isTracking = false;
-  targetVideo = null;
-  floatBtn.style.display = 'none';
-  closeDropdown();
-  
-  if (resizeObserver) {
-    resizeObserver.disconnect();
-    resizeObserver = null;
-  }
-  if (intersectionObserver) {
-    intersectionObserver.disconnect();
-    intersectionObserver = null;
-  }
-  
-  window.removeEventListener('scroll', schedulePositionUpdate, true);
-  window.removeEventListener('resize', schedulePositionUpdate);
-  
-  if (rafId) cancelAnimationFrame(rafId);
-  rafId = null;
-}
-
-// ─── ANTI-JANK THROTTLED POSITIONING ─────────────────────────────────────
-
-let isUpdateScheduled = false;
-
-function schedulePositionUpdate() {
-  if (!isTracking || !targetVideo || isUpdateScheduled) return;
-  isUpdateScheduled = true;
-  rafId = requestAnimationFrame(applyPositionUpdate);
-}
-
-function applyPositionUpdate() {
-  isUpdateScheduled = false;
-  if (!targetVideo) return;
-
-  const rect = targetVideo.getBoundingClientRect();
-  
-  // Anchor to top-right of the video with 16px padding
-  let leftPos = rect.right - 60;
-  if (leftPos < 0) leftPos = rect.left + 16;
-  let topPos = rect.top + 16;
-  
-  // Apply hardware-accelerated transform to avoid layout thrashing
-  floatBtn.style.transform = `translate(${leftPos}px, ${topPos}px)`;
-
-  // Update dropdown position if active
-  if (activeDropdown) {
-    let dropLeft = leftPos - 276;
-    if (dropLeft < 0) dropLeft = leftPos;
-    // We update top/left for dropdown since its CSS has a transform transition
-    activeDropdown.style.left = `${dropLeft}px`;
-    activeDropdown.style.top = `${topPos + 54}px`;
-  }
-}
-
-// ─── Dropdown UI & Logic ──────────────────────────────────────────────────
 
 function toggleDropdown() {
   if (activeDropdown) {
@@ -249,17 +101,16 @@ function toggleDropdown() {
   const dropdown = document.createElement('div');
   dropdown.className = 'dropdown';
   
-  // Initial position calculation
-  const rect = targetVideo.getBoundingClientRect();
-  let leftPos = rect.right - 60;
-  if (leftPos < 0) leftPos = rect.left + 16;
-  let topPos = rect.top + 16;
+  // Position dropdown relative to the button
+  const btnLeft = parseFloat(floatBtn.style.left) || 0;
+  const btnTop = parseFloat(floatBtn.style.top) || 0;
   
-  let dropLeft = leftPos - 276;
-  if (dropLeft < 0) dropLeft = leftPos;
+  // Ensure the dropdown doesn't go off-screen
+  let dropLeft = btnLeft - 276; // Default to left-align (320px width - 44px btn)
+  if (dropLeft < 0) dropLeft = btnLeft; // Snap to right-align if too far left
   
   dropdown.style.left = `${dropLeft}px`;
-  dropdown.style.top = `${topPos + 54}px`;
+  dropdown.style.top = `${btnTop + 54}px`;
   
   // Aggressive scroll event trap
   ['wheel', 'mousewheel', 'DOMMouseScroll', 'touchmove'].forEach(evt => {
