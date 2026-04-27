@@ -32,8 +32,7 @@ function initializeSystem() {
   }
 
   // 1. Root-Level Host Injection
-  host = document.createElement('div');
-  host.id = 'uhdd-host';
+  host = document.createElement('uhdd-host');
   host.style.cssText = `
     position: fixed !important;
     top: 0 !important;
@@ -226,7 +225,7 @@ function schedulePositionUpdate() {
 
 function applyPositionUpdate() {
   isUpdateScheduled = false;
-  if (!targetVideo) return;
+  if (!targetVideo || !host) return;
 
   const rect = targetVideo.getBoundingClientRect();
   
