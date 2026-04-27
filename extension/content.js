@@ -283,11 +283,14 @@ function renderFormats(data) {
     const size = opt.filesize ? (opt.filesize / 1024 / 1024).toFixed(1) + " MB" : "";
     const detailsText = [ext, size, opt.vcodec !== 'none' ? opt.vcodec : opt.acodec].filter(Boolean).join(" • ");
 
+    const labelText = opt.label || opt.resolution || 'Audio';
+
     btn.innerHTML = `
       <span class="quality-icon">${iconContent}</span>
       <div class="quality-label-wrap">
         <span class="quality-label">
-          ${opt.label || opt.resolution || 'Audio'} ${badgeHtml}
+          <span class="quality-label-text">${labelText}</span>
+          ${badgeHtml}
         </span>
         <span class="format-details">${detailsText}</span>
       </div>
