@@ -1,465 +1,266 @@
-/**
- * UHDD Content Script — Ghost Overlay Tracking System
- * Strictly injects body-level UI in the top frame only and tracks the video element.
- */
+const LOG = "[UHDD UI]";
 
-
-
-const DAEMON_URL = "http://localhost:8000";
-let floatBtn = null;
-let activeDropdown = null;
-let formatsLoaded = false;
+// The Ghost UI State
+let uiHost = null;
 let shadowRoot = null;
-let targetVideo = null;
-let host = null;
+let uiContainer = null;
+let floatingBtn = null;
+let dropdown = null;
 
-let isTracking = false;
-let rafId = null;
-let dragOffset = { x: -60, y: 20 };
+let isDragging = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let initialLeft = 0;
+let initialTop = 0;
+let currentLeft = 0; 
+let currentTop = 0;  
 
-const downloadIcon = `
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
-</svg>
+let observer = null;
+
+// CSS Reset for host (ensures it escapes host stacking contexts as much as possible)
+const HOST_STYLE = `
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 2147483647 !important;
+  pointer-events: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
 `;
 
+// Start listening for <video> tags
+function init() {
+  if (uiHost) return;
 
-
-function initializeSystem() {
-  if (document.getElementById('uhdd-host')) return;
-  if (!document.documentElement) {
-    requestAnimationFrame(initializeSystem);
-    return;
+  // Check if a video already exists
+  if (document.querySelector("video")) {
+    injectUI();
+  } else {
+    // Wait for a video to be added
+    observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.addedNodes.length > 0) {
+          if (document.querySelector("video")) {
+            observer.disconnect();
+            injectUI();
+            break;
+          }
+        }
+      }
+    });
+    observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
   }
+}
 
-  // 1. Root-Level Host Injection
-  host = document.createElement('uhdd-host');
-  host.style.cssText = `
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    z-index: 2147483647 !important;
-    pointer-events: none !important;
-    background: transparent !important;
-    border: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  `;
-  host.style.pointerEvents = 'none';
-  document.documentElement.appendChild(host);
+function injectUI() {
+  if (uiHost) return;
+  console.log(`${LOG} Video detected, injecting Draggable Ghost UI`);
 
-  shadowRoot = host.attachShadow({ mode: 'open' });
+  // Default to top right corner with some padding
+  currentLeft = window.innerWidth - 80;
+  currentTop = 80;
 
-  // Inject CSS safely via web_accessible_resources
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = chrome.runtime.getURL('content.css');
+  uiHost = document.createElement("div");
+  uiHost.id = "uhdd-host";
+  uiHost.style.cssText = HOST_STYLE;
+
+  shadowRoot = uiHost.attachShadow({ mode: "closed" });
+
+  // Inject CSS inside Shadow Root
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = chrome.runtime.getURL("content.css");
   shadowRoot.appendChild(link);
 
-  // Create Floating Button (Hidden by default)
-  floatBtn = document.createElement('button');
-  floatBtn.className = 'floating-btn';
-  floatBtn.innerHTML = downloadIcon;
-  floatBtn.title = "Download with UHDD";
-  floatBtn.style.position = 'absolute';
-  floatBtn.style.display = 'none';
-  floatBtn.style.pointerEvents = 'auto'; // allow clicks
-  floatBtn.style.top = '0';
-  floatBtn.style.left = '0';
+  // Container
+  uiContainer = document.createElement("div");
+  uiContainer.id = "uhdd-container";
+  uiContainer.style.left = currentLeft + "px";
+  uiContainer.style.top = currentTop + "px";
   
-  shadowRoot.appendChild(floatBtn);
+  // Button
+  floatingBtn = document.createElement("div");
+  floatingBtn.className = "floating-btn";
+  floatingBtn.innerHTML = `
+    <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+    <div class="status-indicator">
+      <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+    </div>
+  `;
 
-  // Draggable Ghost Overlay Logic
-  let isDragging = false;
-  let startX, startY;
-  let startOffsetX, startOffsetY;
+  // Dropdown
+  dropdown = document.createElement("div");
+  dropdown.className = "dropdown";
 
-  floatBtn.addEventListener('mousedown', (e) => {
-    e.stopPropagation();
-    isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    startOffsetX = dragOffset.x;
-    startOffsetY = dragOffset.y;
-  });
+  uiContainer.appendChild(floatingBtn);
+  uiContainer.appendChild(dropdown);
+  shadowRoot.appendChild(uiContainer);
+  document.documentElement.appendChild(uiHost);
 
-  document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    e.stopPropagation();
-    
-    // Calculate deltas
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    
-    // Update global offset
-    dragOffset.x = startOffsetX + dx;
-    dragOffset.y = startOffsetY + dy;
-    
-    schedulePositionUpdate();
-  });
+  setupInteractions();
+}
 
-  document.addEventListener('mouseup', (e) => {
-    if (!isDragging) return;
-    isDragging = false;
-    e.stopPropagation();
-    
-    const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
-    if (dist < 5) {
-      // It was a click
-      toggleDropdown();
-      if (activeDropdown && !formatsLoaded) {
-        fetchFormatsFromBackground();
-      }
-    }
-  });
-
-  // Click outside to close dropdown
-  document.addEventListener('mousedown', (e) => {
-    if (activeDropdown) {
+function setupInteractions() {
+  floatingBtn.addEventListener("mousedown", onMouseDown);
+  
+  // Close dropdown when clicking outside
+  document.addEventListener("mousedown", (e) => {
+    if (dropdown.classList.contains("open")) {
       const path = e.composedPath();
-      if (!path.includes(activeDropdown) && !path.includes(floatBtn)) {
-        closeDropdown();
+      if (!path.includes(uiContainer)) {
+        dropdown.classList.remove("open");
       }
     }
-  });
-
+  }, { capture: true });
 }
 
-// ─── DYNAMIC DOM HANDLING & MUTATION OBSERVER ──────────────────────────────
-
-function startVideoObserver() {
-  scanForVideos();
-
-  // Watch for dynamic video element creation/destruction (e.g., YouTube ad breaks)
-  const observer = new MutationObserver((mutations) => {
-    let shouldScan = false;
-    for (const m of mutations) {
-      if (m.addedNodes.length > 0 || m.removedNodes.length > 0) {
-        shouldScan = true;
-        break;
-      }
-    }
-    // If the tracked video was removed from the DOM, untrack and scan again
-    if (targetVideo && !document.contains(targetVideo)) {
-      untrackVideo();
-      shouldScan = true;
-    }
-    if (shouldScan && !isTracking) {
-      scanForVideos();
-    }
-  });
-  observer.observe(document.body, { 
-    childList: true, 
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['style', 'class', 'hidden']
-  });
-}
-
-function scanForVideos() {
-  const videos = document.querySelectorAll('video');
-  let bestVideo = null;
-  let maxArea = 0;
+function onMouseDown(e) {
+  if (e.button !== 0) return; // Only left click
+  e.preventDefault();
   
-  for (const v of videos) {
-    const rect = v.getBoundingClientRect();
-    const area = rect.width * rect.height;
-    if (area > maxArea && area > 10000) { // Ignore tiny 1x1 tracking videos
-      maxArea = area;
-      bestVideo = v;
-    } else if (!v._uhddWatched) {
-      v._uhddWatched = true;
-      const waitObserver = new ResizeObserver(() => {
-        const r = v.getBoundingClientRect();
-        if (r.width * r.height > 10000 && !isTracking) {
-          waitObserver.disconnect();
-          scanForVideos();
-        }
-      });
-      waitObserver.observe(v);
-    }
+  isDragging = false;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  initialLeft = currentLeft;
+  initialTop = currentTop;
+
+  // Bind to document to prevent event hijacking if cursor leaves button
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", onMouseUp);
+}
+
+function onMouseMove(e) {
+  const dx = e.clientX - dragStartX;
+  const dy = e.clientY - dragStartY;
+
+  // Use Math.hypot to distinguish drag vs click (threshold: 5px)
+  if (!isDragging && Math.hypot(dx, dy) > 5) {
+    isDragging = true;
+    dropdown.classList.remove("open"); // Close dropdown while dragging
   }
 
-  if (bestVideo && bestVideo !== targetVideo) {
-    trackVideo(bestVideo);
+  if (isDragging) {
+    currentLeft = initialLeft + dx;
+    currentTop = initialTop + dy;
+    
+    // Clamp to viewport bounds to prevent getting lost
+    const maxX = window.innerWidth - 48;
+    const maxY = window.innerHeight - 48;
+    currentLeft = Math.max(0, Math.min(currentLeft, maxX));
+    currentTop = Math.max(0, Math.min(currentTop, maxY));
+
+    // DRAGGABLE GHOST: Update positioning strictly via JS style.left and style.top
+    uiContainer.style.left = currentLeft + "px";
+    uiContainer.style.top = currentTop + "px";
   }
 }
 
-// ─── GHOST OVERLAY TRACKING SYSTEM ───────────────────────────────────────
+function onMouseUp(e) {
+  document.removeEventListener("mousemove", onMouseMove);
+  document.removeEventListener("mouseup", onMouseUp);
 
-let resizeObserver = null;
-let intersectionObserver = null;
-
-function trackVideo(videoElement) {
-  if (!host) initializeSystem();
-  if (isTracking) untrackVideo();
-  targetVideo = videoElement;
-  isTracking = true;
-
-  // 1. ResizeObserver: Track video dimension changes
-  resizeObserver = new ResizeObserver(() => {
-    schedulePositionUpdate();
-  });
-  resizeObserver.observe(targetVideo);
-
-  // 2. IntersectionObserver: Hide button when video is out of viewport
-  intersectionObserver = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (entry.isIntersecting) {
-        applyPositionUpdate();
-        floatBtn.style.display = 'flex';
-        schedulePositionUpdate();
-      } else {
-        floatBtn.style.display = 'none';
-        closeDropdown(); // Close if open
-      }
-    }
-  }, { threshold: 0.1 });
-  intersectionObserver.observe(targetVideo);
-
-  // 3. Scroll & Resize sync
-  window.addEventListener('scroll', schedulePositionUpdate, true); // capture phase
-  window.addEventListener('resize', schedulePositionUpdate);
-  
-  schedulePositionUpdate();
-}
-
-function untrackVideo() {
-  isTracking = false;
-  targetVideo = null;
-  formatsLoaded = false;
-  floatBtn.style.display = 'none';
-  closeDropdown();
-  
-  if (resizeObserver) {
-    resizeObserver.disconnect();
-    resizeObserver = null;
+  if (!isDragging) {
+    // Distance < 5, registered as a click
+    toggleDropdown();
   }
-  if (intersectionObserver) {
-    intersectionObserver.disconnect();
-    intersectionObserver = null;
-  }
-  
-  window.removeEventListener('scroll', schedulePositionUpdate, true);
-  window.removeEventListener('resize', schedulePositionUpdate);
-  
-  if (rafId) cancelAnimationFrame(rafId);
-  rafId = null;
+  isDragging = false;
 }
-
-// ─── ANTI-JANK THROTTLED POSITIONING ─────────────────────────────────────
-
-let isUpdateScheduled = false;
-
-function schedulePositionUpdate() {
-  if (!isTracking || !targetVideo || isUpdateScheduled) return;
-  isUpdateScheduled = true;
-  rafId = requestAnimationFrame(applyPositionUpdate);
-}
-
-function applyPositionUpdate() {
-  isUpdateScheduled = false;
-  if (!targetVideo || !host) return;
-
-  const rect = targetVideo.getBoundingClientRect();
-  
-  let leftPos = rect.right + dragOffset.x;
-  let topPos = rect.top + dragOffset.y;
-
-  if (leftPos < 0) leftPos = 0;
-  if (topPos < 0) topPos = 0;
-
-  floatBtn.style.left = `${leftPos}px`;
-  floatBtn.style.top = `${topPos}px`;
-
-  // Update dropdown position if active
-  if (activeDropdown) {
-    let dropLeft = leftPos - 276;
-    if (dropLeft < 0) dropLeft = leftPos;
-    // We update top/left for dropdown since its CSS has a transform transition
-    activeDropdown.style.left = `${dropLeft}px`;
-    activeDropdown.style.top = `${topPos + 54}px`;
-  }
-}
-
-// ─── Dropdown UI & Logic ──────────────────────────────────────────────────
 
 function toggleDropdown() {
-  if (activeDropdown) {
-    closeDropdown();
-    return;
+  if (dropdown.classList.contains("open")) {
+    dropdown.classList.remove("open");
+  } else {
+    openDropdown();
   }
-
-  const dropdown = document.createElement('div');
-  dropdown.className = 'dropdown';
-  
-  // Initial position calculation
-  const rect = targetVideo.getBoundingClientRect();
-  let leftPos = rect.right + dragOffset.x;
-  let topPos = rect.top + dragOffset.y;
-  
-  let dropLeft = leftPos - 276;
-  if (dropLeft < 0) dropLeft = leftPos;
-  
-  dropdown.style.left = `${dropLeft}px`;
-  dropdown.style.top = `${topPos + 54}px`;
-  
-  // Aggressive scroll event trap
-  ['wheel', 'mousewheel', 'DOMMouseScroll', 'touchmove'].forEach(evt => {
-    dropdown.addEventListener(evt, (e) => {
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-    }, { passive: true });
-  });
-
-  dropdown.addEventListener('mousedown', e => e.stopPropagation());
-  dropdown.addEventListener('click', e => e.stopPropagation());
-
-  dropdown.innerHTML = `
-    <div class="state-container">
-      <div class="spinner"></div>
-      <div>Finding formats...</div>
-    </div>
-  `;
-  
-  shadowRoot.appendChild(dropdown);
-  dropdown.offsetHeight; // Force reflow
-  dropdown.classList.add('visible');
-  activeDropdown = dropdown;
 }
 
-function fetchFormatsFromBackground() {
-  chrome.runtime.sendMessage({ type: "getFormats" }, (response) => {
+function openDropdown() {
+  dropdown.classList.add("open");
+  dropdown.innerHTML = '<div class="loading-text">Fetching formats...</div>';
+
+  const videoUrl = window.location.href;
+
+  // DUMB UI ENFORCEMENT: Proxy through background.js via GET_TAB_STREAMS
+  chrome.runtime.sendMessage({ action: "GET_TAB_STREAMS", url: videoUrl }, (response) => {
     if (chrome.runtime.lastError || !response || !response.ok) {
-      const msg = response?.error?.includes("422")
-        ? "Unsupported URL or no formats available."
-        : "Backend offline — start UHDD daemon.";
-      renderErrorState(msg);
+      dropdown.innerHTML = `<div class="loading-text" style="color: var(--uhdd-error)">Failed to fetch formats</div>`;
       return;
     }
-    formatsLoaded = true;
-    renderFormatOptions(response.data);
+    renderFormats(response.data);
   });
 }
 
-function renderErrorState(message) {
-  if (!activeDropdown) return;
-  activeDropdown.innerHTML = `
-    <div class="state-container">
-      <div style="font-size: 24px; margin-bottom: 8px;">⚠️</div>
-      <div class="error-text">${message}</div>
-    </div>
-  `;
-}
-
-function renderSuccessState() {
-  if (!activeDropdown) return;
-  activeDropdown.innerHTML = `
-    <div class="state-container">
-      <div class="success-icon">✓</div>
-      <div>Download Queued!</div>
-    </div>
-  `;
-  setTimeout(closeDropdown, 2000);
-}
-
-function renderFormatOptions(data) {
-  if (!activeDropdown) return;
-  if (!data.options || data.options.length === 0) {
-    renderErrorState("No formats available.");
+function renderFormats(data) {
+  if (!data || !data.options || data.options.length === 0) {
+    dropdown.innerHTML = '<div class="loading-text">No download options found.</div>';
     return;
   }
 
-  activeDropdown.innerHTML = '';
+  dropdown.innerHTML = `<div class="dropdown-header">${data.title || "Download Options"}</div>`;
 
-  data.options.forEach((opt, idx) => {
-    const item = document.createElement('div');
-    item.className = 'dropdown-item';
-    if (idx === 0) item.classList.add('recommended');
-
-    const left = document.createElement('div');
-    left.className = 'item-left';
+  data.options.forEach(opt => {
+    const item = document.createElement("div");
+    item.className = "dropdown-item";
     
-    const icon = document.createElement('div');
-    icon.className = 'item-icon';
-    icon.textContent = opt.type === "audio" ? "♫" : "▶";
-
-    const details = document.createElement('div');
-    details.className = 'item-details';
-    
-    const title = document.createElement('div');
-    title.className = 'item-title';
-    title.textContent = opt.label;
-    
-    const meta = document.createElement('div');
-    meta.className = 'item-meta';
-    meta.textContent = [opt.filesize_str, opt.vcodec, opt.acodec].filter(Boolean).join(' • ');
-
-    details.appendChild(title);
-    details.appendChild(meta);
-    left.appendChild(icon);
-    left.appendChild(details);
-
-    const right = document.createElement('div');
-    right.className = 'item-right';
-    
-    if (opt.badge) {
-      const badge = document.createElement('span');
-      badge.className = `badge badge-${opt.badge.toLowerCase()}`;
-      badge.textContent = opt.badge;
-      right.appendChild(badge);
+    // Determine badge
+    let badgeHtml = '';
+    let badgeClass = 'badge-sd';
+    if (opt.resolution) {
+      const height = parseInt(opt.resolution.split('x')[1]) || 0;
+      if (height >= 2160) badgeClass = 'badge-4k';
+      else if (height >= 1080) badgeClass = 'badge-hd';
+      
+      badgeHtml = `<span class="badge ${badgeClass}">${height}p</span>`;
+    } else if (opt.audio_only) {
+      badgeHtml = `<span class="badge badge-audio">AUDIO</span>`;
     }
 
-    item.appendChild(left);
-    item.appendChild(right);
+    let ext = opt.ext || "mp4";
+    let size = opt.filesize ? (opt.filesize / 1024 / 1024).toFixed(1) + " MB" : "Unknown Size";
 
-    item.addEventListener('click', (e) => {
-      e.stopPropagation();
-      dispatchDownload(window.location.href, opt.format_id);
-    });
+    item.innerHTML = `
+      <div class="format-info">
+        <span class="format-res">${opt.format_note || opt.resolution || 'Audio'}</span>
+        <span class="format-details">${ext.toUpperCase()} • ${size} • ${opt.vcodec !== 'none' ? opt.vcodec : opt.acodec}</span>
+      </div>
+      ${badgeHtml}
+    `;
 
-    activeDropdown.appendChild(item);
+    // CSP COMPLIANCE: No inline onclick attributes. Use addEventListener.
+    item.addEventListener("click", () => triggerDownload(opt.format_id, data.url));
+    dropdown.appendChild(item);
   });
 }
 
-function closeDropdown() {
-  if (activeDropdown) {
-    activeDropdown.classList.remove('visible');
-    setTimeout(() => {
-      if (activeDropdown) activeDropdown.remove();
-      activeDropdown = null;
-    }, 200);
-  }
-}
+function triggerDownload(formatId, url) {
+  console.log(`${LOG} Dispatching download via SW...`);
+  dropdown.classList.remove("open");
+  
+  const payload = {
+    url: url || window.location.href,
+    engine: "ytdlp",
+    format_id: formatId
+  };
 
-async function dispatchDownload(url, format_id) {
-  if (activeDropdown) {
-    activeDropdown.innerHTML = `
-      <div class="state-container">
-        <div class="spinner"></div>
-        <div>Sending to daemon...</div>
-      </div>
-    `;
-  }
-
-  try {
-    const response = await fetch(`${DAEMON_URL}/api/download`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, engine: "ytdlp", format_id }),
-    });
-
-    if (response.ok) {
-      renderSuccessState();
-    } else {
-      renderErrorState("Failed to queue download.");
+  // DUMB UI ENFORCEMENT: Strictly send message to background.js
+  chrome.runtime.sendMessage({ action: "TRIGGER_DOWNLOAD", payload: payload }, (response) => {
+    if (chrome.runtime.lastError || (response && !response.ok)) {
+      console.error(`${LOG} Download trigger failed`);
+      return;
     }
-  } catch (err) {
-    renderErrorState("Backend offline — start UHDD daemon.");
-  }
+    
+    // Show success indicator
+    const indicator = floatingBtn.querySelector(".status-indicator");
+    indicator.classList.add("visible");
+    setTimeout(() => {
+      indicator.classList.remove("visible");
+    }, 2000);
+  });
 }
 
-// Start Video Discovery (Silent Lazy Injection)
-startVideoObserver();
+// Start lazy injection process
+init();

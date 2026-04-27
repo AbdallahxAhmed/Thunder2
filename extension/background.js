@@ -232,8 +232,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   }
 
-  // Handle messages from the popup
-  if (message.type === "getFormats") {
+  // Handle messages from the popup or content script
+  if (message.type === "getFormats" || message.action === "GET_TAB_STREAMS") {
     const tabId = message.tabId ?? sender.tab?.id;
     const url = message.url ?? sender.tab?.url;
 
@@ -290,6 +290,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error" });
         sendResponse({ ok: false, error: err.message });
       });
+
+    return true; // keep channel open for async response
+  }
+
+  // Handle download triggers from content script (Dumb UI enforcement)
+  if (message.action === "TRIGGER_DOWNLOAD") {
+    const payload = message.payload;
+    if (!payload || !payload.url) {
+      sendResponse({ ok: false, error: "Missing payload or url" });
+      return true;
+    }
+
+    console.log(`${LOG} Triggering download from content script:`, payload);
+    
+    fetch(DAEMON_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+    .then(resp => {
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    })
+    .then(data => {
+      const engine = data.engine || "unknown";
+      console.log(`${LOG} Download queued → ${engine}`);
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icons/icon48.png",
+        title: "UHDD: Download Queued",
+        message: `${payload.url.substring(0, 50)}… → ${engine}`,
+      });
+      sendResponse({ ok: true, data });
+    })
+    .catch(err => {
+      console.error(`${LOG} Download trigger failed:`, err);
+      chrome.notifications.create({
+        type: "basic",
+        iconUrl: "icons/icon48.png",
+        title: "UHDD: Backend Offline",
+        message: "Could not reach UHDD daemon at localhost:8000",
+      });
+      sendResponse({ ok: false, error: err.message });
+    });
 
     return true; // keep channel open for async response
   }
