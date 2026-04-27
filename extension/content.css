@@ -26,9 +26,8 @@
   position: absolute; /* Draggable Ghost uses absolute positioning via JS */
   z-index: 2147483647;
   color: var(--text-primary);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end; /* Dropdown aligned right of button */
+  width: 48px;
+  height: 48px;
 }
 
 /* ─── Floating Button ────────────────────────────────────────────── */
@@ -94,7 +93,9 @@
 /* ─── Dropdown Menu ──────────────────────────────────────────────── */
 
 .dropdown {
-  margin-top: 8px;
+  position: absolute;
+  top: 56px; /* 48px button height + 8px gap */
+  right: 0;  /* default: right-align (extends left); JS may set left: 0 instead */
   width: 320px;
   background: var(--bg-main);
   border: 1px solid var(--border);
