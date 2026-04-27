@@ -122,8 +122,12 @@ function startVideoObserver() {
       scanForVideos();
     }
   });
-  
-  observer.observe(document.body, { childList: true, subtree: true });
+  observer.observe(document.body, { 
+    childList: true, 
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['style', 'class', 'hidden']
+  });
 }
 
 function scanForVideos() {
@@ -137,6 +141,16 @@ function scanForVideos() {
     if (area > maxArea && area > 10000) { // Ignore tiny 1x1 tracking videos
       maxArea = area;
       bestVideo = v;
+    } else if (!v._uhddWatched) {
+      v._uhddWatched = true;
+      const waitObserver = new ResizeObserver(() => {
+        const r = v.getBoundingClientRect();
+        if (r.width * r.height > 10000 && !isTracking) {
+          waitObserver.disconnect();
+          scanForVideos();
+        }
+      });
+      waitObserver.observe(v);
     }
   }
 
@@ -165,6 +179,7 @@ function trackVideo(videoElement) {
   intersectionObserver = new IntersectionObserver((entries) => {
     for (const entry of entries) {
       if (entry.isIntersecting) {
+        applyPositionUpdate();
         floatBtn.style.display = 'flex';
         schedulePositionUpdate();
       } else {
