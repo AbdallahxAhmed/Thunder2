@@ -38,8 +38,10 @@ htmlcov/
 .coverage
 coverage.xml
 
-# Specify
-.specify/memory/
+# Agents & Specify
+.agents/
+AGENTS.md
+.specify/
 downloads/
 drm_*/
 *.tmp
