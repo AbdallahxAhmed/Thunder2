@@ -1,11 +1,28 @@
 (function () {
   const LOG = "[UHDD]";
 
+  // ─── Known License Server Patterns ────────────────────────────────────
+  // Add URL substrings or hostnames that identify Widevine license endpoints.
+  // Detection fires on EITHER a URL match OR a binary CDM challenge signature.
+  const LICENSE_URL_PATTERNS = [
+    "shield-drm.imggaming.com",
+    "/api/v2/license",
+  ];
+
+  // Headers we MUST capture from the license request (case-insensitive match)
+  const PRIORITY_HEADERS = [
+    "authorization",
+    "x-drm-info",
+    "realm",
+    "content-type",
+  ];
+
   // ─── State ────────────────────────────────────────────────────────────
   let capturedManifestUrl = null;
   let capturedPSSH = null;        // base64-encoded PSSH
   let capturedLicenseUrl = null;
   let capturedLicenseHeaders = {};
+  let dispatched = false;
 
   // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -28,10 +45,50 @@
     return false;
   }
 
+  function isKnownLicenseUrl(url) {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    return LICENSE_URL_PATTERNS.some((p) => lower.includes(p));
+  }
+
+  function extractHeaders(headersSource) {
+    // Extracts ALL headers from a fetch init or XHR, ensuring priority headers
+    // are always included when present.
+    const result = {};
+    if (!headersSource) return result;
+
+    if (headersSource instanceof Headers) {
+      headersSource.forEach((value, key) => {
+        result[key] = value;
+      });
+    } else if (Array.isArray(headersSource)) {
+      headersSource.forEach(([key, value]) => {
+        result[key] = value;
+      });
+    } else if (typeof headersSource === "object") {
+      Object.entries(headersSource).forEach(([key, value]) => {
+        result[key] = String(value);
+      });
+    }
+    return result;
+  }
+
   function syncWithDaemon() {
-    // For .mpd: require manifest + PSSH + license URL
-    if (capturedManifestUrl && capturedPSSH && capturedLicenseUrl) {
-      console.log(`${LOG} Full DRM package ready, dispatching...`);
+    // Require manifest + PSSH + license URL — dispatch once
+    if (capturedManifestUrl && capturedPSSH && capturedLicenseUrl && !dispatched) {
+      dispatched = true;
+
+      const headerCount = Object.keys(capturedLicenseHeaders).length;
+      const priorityCaptured = PRIORITY_HEADERS.filter(
+        (h) => Object.keys(capturedLicenseHeaders).some((k) => k.toLowerCase() === h)
+      );
+
+      console.log(`${LOG} ✅ Full DRM package ready!`);
+      console.log(`${LOG}   MPD:     ${capturedManifestUrl}`);
+      console.log(`${LOG}   PSSH:    ${capturedPSSH.substring(0, 40)}…`);
+      console.log(`${LOG}   License: ${capturedLicenseUrl}`);
+      console.log(`${LOG}   Headers: ${headerCount} total, priority [${priorityCaptured.join(", ")}]`);
+
       window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
         detail: {
           type: "drm_package",
@@ -44,6 +101,33 @@
     }
   }
 
+  // ─── License Request Detection (shared logic) ─────────────────────────
+
+  function handlePotentialLicenseRequest(url, headers, body) {
+    // Two-pronged detection:
+    //   1) URL matches a known license server pattern
+    //   2) Body looks like a binary Widevine CDM challenge
+    // Either condition is sufficient to capture the license URL.
+    const urlMatch = isKnownLicenseUrl(url);
+    const bodyMatch = body && isLikelyChallenge(body);
+
+    if (urlMatch || bodyMatch) {
+      capturedLicenseUrl = url;
+      capturedLicenseHeaders = extractHeaders(headers);
+
+      const reason = urlMatch && bodyMatch ? "URL + challenge"
+                   : urlMatch             ? "URL pattern"
+                   :                        "CDM challenge bytes";
+
+      console.log(`${LOG} 🔑 License URL captured (${reason}): ${url}`);
+      console.log(`${LOG}    Headers: ${JSON.stringify(capturedLicenseHeaders, null, 2)}`);
+
+      syncWithDaemon();
+      return true;
+    }
+    return false;
+  }
+
   // ─── Fetch Interception ───────────────────────────────────────────────
 
   const originalFetch = window.fetch;
@@ -53,9 +137,8 @@
     // Capture .mpd / .m3u8 manifest URLs
     if (url.includes(".mpd") || url.includes(".m3u8")) {
       capturedManifestUrl = url;
-      console.log(`${LOG} Manifest captured: ${url}`);
+      console.log(`${LOG} 📡 Manifest captured: ${url}`);
 
-      // For .m3u8, dispatch immediately (no DRM expected)
       if (url.includes(".m3u8")) {
         window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
           detail: { type: "manifest", url: url },
@@ -65,30 +148,16 @@
       }
     }
 
-    // Detect license server requests (binary body = CDM challenge)
-    if (init && init.body) {
-      let bodyBytes = init.body;
+    // Detect license server requests
+    if (init) {
+      let bodyBytes = init.body || null;
       if (bodyBytes instanceof Blob) {
-        bodyBytes = await bodyBytes.arrayBuffer();
+        try { bodyBytes = await bodyBytes.arrayBuffer(); } catch (_) {}
       }
-      if (isLikelyChallenge(bodyBytes)) {
-        capturedLicenseUrl = url;
-        capturedLicenseHeaders = {};
-
-        // Capture headers from the init object
-        if (init.headers) {
-          if (init.headers instanceof Headers) {
-            init.headers.forEach((value, key) => {
-              capturedLicenseHeaders[key] = value;
-            });
-          } else if (typeof init.headers === "object") {
-            Object.assign(capturedLicenseHeaders, init.headers);
-          }
-        }
-
-        console.log(`${LOG} License URL captured: ${url}`);
-        syncWithDaemon();
-      }
+      handlePotentialLicenseRequest(url, init.headers, bodyBytes);
+    } else if (isKnownLicenseUrl(url)) {
+      // GET-based license URL (rare but possible) — no body to check
+      handlePotentialLicenseRequest(url, null, null);
     }
 
     return originalFetch.apply(this, arguments);
@@ -107,7 +176,7 @@
     // Capture .mpd / .m3u8
     if (typeof url === "string" && (url.includes(".mpd") || url.includes(".m3u8"))) {
       capturedManifestUrl = url;
-      console.log(`${LOG} Manifest captured (XHR): ${url}`);
+      console.log(`${LOG} 📡 Manifest captured (XHR): ${url}`);
 
       if (url.includes(".m3u8")) {
         window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
@@ -129,12 +198,7 @@
   };
 
   XMLHttpRequest.prototype.send = function (body) {
-    if (body && isLikelyChallenge(body)) {
-      capturedLicenseUrl = this._uhddUrl;
-      capturedLicenseHeaders = { ...this._uhddHeaders };
-      console.log(`${LOG} License URL captured (XHR): ${this._uhddUrl}`);
-      syncWithDaemon();
-    }
+    handlePotentialLicenseRequest(this._uhddUrl, this._uhddHeaders, body);
     return originalXHRSend.apply(this, arguments);
   };
 
@@ -142,13 +206,12 @@
 
   const originalGenerateRequest = MediaKeySession.prototype.generateRequest;
   MediaKeySession.prototype.generateRequest = async function (initDataType, initData) {
-    // Extract PSSH from initData
     const psshBase64 = arrayBufferToBase64(initData);
     capturedPSSH = psshBase64;
-    console.log(`${LOG} PSSH captured (${initData.byteLength} bytes)`);
+    console.log(`${LOG} 🛡️ PSSH captured (${initData.byteLength} bytes, type: ${initDataType})`);
     syncWithDaemon();
     return originalGenerateRequest.apply(this, arguments);
   };
 
-  console.log(`${LOG} License Proxy Hook v2 injected.`);
+  console.log(`${LOG} License Proxy Hook v3 — targeting: ${LICENSE_URL_PATTERNS.join(", ")}`);
 })();
