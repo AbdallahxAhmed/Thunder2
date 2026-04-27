@@ -334,6 +334,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
 
+    // Override URL with the tab's top-level page URL so that content scripts
+    // running inside player iframes (e.g. geo.dailymotion.com/player/…) never
+    // submit the embed URL to the daemon — same pattern as GET_HYBRID_STREAMS.
+    if (payload.format_id !== "raw-intercept" && sender.tab?.url) {
+      payload.url = sender.tab.url;
+    }
+
     if (payload.format_id === "raw-intercept") {
       const tabId = sender.tab?.id;
       const buffer = tabBuffers.get(tabId);
