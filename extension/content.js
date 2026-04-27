@@ -1,187 +1,185 @@
 /**
- * UHDD Content Script — Body-Level Draggable Floating Download Button
- * 
- * Injects a floating download button directly into document.body.
- * Draggable, remembers position, and intelligently detects <video> presence.
+ * UHDD Content Script — Lazy Injection Rewrite
+ * Strictly injects body-level UI ONLY if a video is found in the current frame.
  */
 
 const DAEMON_URL = "http://localhost:8000";
-let currentUrl = window.location.href;
 let activeDropdown = null;
-let floatingContainer = null;
 let isVideoPresent = false;
+let floatRoot = null;
+let floatBtn = null;
 
-// SVG Icon for the floating button
+// SVG Icon
 const downloadIcon = `
 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
   <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
 </svg>
 `;
 
-// ─── Initialization ────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', startVideoObserver);
+startVideoObserver();
 
-document.addEventListener('DOMContentLoaded', initUI);
-initUI(); // Run immediately in case DOMContentLoaded already fired
-
-function initUI() {
-  if (document.getElementById('uhdd-floating-ui')) return;
+function startVideoObserver() {
+  if (window.uhddObserverAttached) return;
   if (!document.body) {
-    // Retry if body isn't ready
-    requestAnimationFrame(initUI);
+    requestAnimationFrame(startVideoObserver);
     return;
   }
+  window.uhddObserverAttached = true;
 
-  floatingContainer = document.createElement('div');
-  floatingContainer.id = 'uhdd-floating-ui';
-  floatingContainer.className = 'uhdd-floating-btn-container uhdd-inactive';
-
-  const btn = document.createElement('button');
-  btn.className = 'uhdd-floating-btn';
-  btn.innerHTML = downloadIcon;
-  btn.title = "Download with UHDD";
-
-  floatingContainer.appendChild(btn);
-  document.body.appendChild(floatingContainer);
-
-  setupDraggable(floatingContainer, btn);
-
-  scanForVideos();
-
-  // Watch for DOM changes (new videos added dynamically)
   const observer = new MutationObserver((mutations) => {
-    // Check for SPA URL changes
-    if (currentUrl !== window.location.href) {
-      currentUrl = window.location.href;
-      closeDropdown(); 
-      scanForVideos();
-    } else {
-      let hasNewNodes = false;
-      for (const mutation of mutations) {
-        if (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0) {
-          hasNewNodes = true;
-          break;
-        }
-      }
-      if (hasNewNodes) {
-        requestAnimationFrame(scanForVideos);
+    let shouldScan = false;
+    for (const m of mutations) {
+      if (m.addedNodes.length > 0 || m.removedNodes.length > 0) {
+        shouldScan = true;
+        break;
       }
     }
+    if (shouldScan) requestAnimationFrame(scanForVideos);
   });
-
+  
   observer.observe(document.body, { childList: true, subtree: true });
+  scanForVideos(); // Initial scan
 }
-
-// ─── Video Detection ──────────────────────────────────────────────────────
 
 function scanForVideos() {
   const videos = document.querySelectorAll('video');
-  // Simple heuristic: is there a video that is somewhat visible?
   const hasVideo = Array.from(videos).some(v => v.offsetWidth > 0 || v.offsetHeight > 0 || v.readyState > 0);
   
+  // 1. LAZY INJECTION: Only create the UI if a video is actually found.
+  if (hasVideo && !floatRoot) {
+    injectUI();
+  }
+
+  // 2. Toggle active/inactive states
   if (hasVideo !== isVideoPresent) {
     isVideoPresent = hasVideo;
-    if (floatingContainer) {
+    if (floatRoot) {
       if (hasVideo) {
-        floatingContainer.classList.remove('uhdd-inactive');
-        floatingContainer.title = "Drag to move. Click to download formats.";
+        floatRoot.classList.remove('uhdd-inactive');
+        floatBtn.title = "Drag to move. Click to download formats.";
       } else {
-        floatingContainer.classList.add('uhdd-inactive');
-        floatingContainer.title = "No video detected on this page.";
+        floatRoot.classList.add('uhdd-inactive');
+        floatBtn.title = "No video detected on this page.";
         closeDropdown();
       }
     }
   }
 }
 
-// ─── Draggable Logic ──────────────────────────────────────────────────────
+function injectUI() {
+  if (document.getElementById('uhdd-float-root')) return;
 
-function setupDraggable(container, btn) {
+  // Create Root Container
+  floatRoot = document.createElement('div');
+  floatRoot.id = 'uhdd-float-root';
+  floatRoot.className = 'uhdd-floating-btn-container';
+  
+  // Default position
+  floatRoot.style.top = '20px';
+  floatRoot.style.left = (window.innerWidth - 64) + 'px';
+
+  // Create Button
+  floatBtn = document.createElement('button');
+  floatBtn.className = 'uhdd-floating-btn';
+  floatBtn.innerHTML = downloadIcon;
+  floatBtn.title = "Download with UHDD";
+  
+  floatRoot.appendChild(floatBtn);
+  document.body.appendChild(floatRoot);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DRAG & CLICK LOGIC (Strictly bounded to injectUI per user request)
+  // ─────────────────────────────────────────────────────────────────────────
   let isDragging = false;
-  let startX, startY;
-  let initialLeft, initialTop;
+  let startX, startY, initialLeft, initialTop;
   let hasMoved = false;
 
-  // Restore position
-  chrome.storage.local.get(['uhddBtnPos'], (result) => {
-    if (result.uhddBtnPos) {
-      container.style.right = 'auto'; // override default right:20px
-      container.style.left = result.uhddBtnPos.left;
-      container.style.top = result.uhddBtnPos.top;
+  const container = document.getElementById('uhdd-float-root');
+  const mainBtn = container.querySelector('.uhdd-floating-btn');
+
+  // Restore position using the exact keys
+  chrome.storage.local.get(['uhddFloatX', 'uhddFloatY'], (res) => {
+    if (res.uhddFloatX && res.uhddFloatY) {
+      container.style.right = 'auto';
+      container.style.bottom = 'auto';
+      container.style.left = res.uhddFloatX;
+      container.style.top = res.uhddFloatY;
     }
   });
 
-  const onMouseDown = (e) => {
-    if (e.button !== 0 || e.target.closest('.uhdd-dropdown')) return;
-    
+  mainBtn.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
     isDragging = true;
     hasMoved = false;
     startX = e.clientX;
     startY = e.clientY;
     
+    // Get actual current pixel position
     const rect = container.getBoundingClientRect();
     initialLeft = rect.left;
     initialTop = rect.top;
     
+    // Crucial: Break the CSS 'right' and 'bottom' anchors
     container.style.right = 'auto';
-    container.style.left = initialLeft + 'px';
-    container.style.top = initialTop + 'px';
+    container.style.bottom = 'auto';
+    
+    // Visual feedback
+    container.style.cursor = 'grabbing';
+    e.preventDefault(); // Prevent text selection
+    e.stopPropagation();
+  });
 
-    e.preventDefault(); // prevent text selection
-    e.stopPropagation(); // prevent video play/pause toggles underneath
-  };
-
-  const onMouseMove = (e) => {
+  document.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
     
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     
+    // If moved more than 5px, it's a drag
     if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
       hasMoved = true;
     }
+    
+    container.style.left = `${initialLeft + dx}px`;
+    container.style.top = `${initialTop + dy}px`;
+  });
 
-    if (hasMoved) {
-      // Boundaries
-      let newLeft = initialLeft + dx;
-      let newTop = initialTop + dy;
-      
-      newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - container.offsetWidth));
-      newTop = Math.max(0, Math.min(newTop, window.innerHeight - btn.offsetHeight));
-      
-      container.style.left = newLeft + 'px';
-      container.style.top = newTop + 'px';
-    }
-  };
-
-  const onMouseUp = (e) => {
+  document.addEventListener('mouseup', (e) => {
     if (!isDragging) return;
     isDragging = false;
+    container.style.cursor = 'grab';
     
-    if (!hasMoved && isVideoPresent && e.target.closest('.uhdd-floating-btn')) {
-      toggleDropdown(btn, container);
-    } else if (hasMoved) {
-      chrome.storage.local.set({
-        uhddBtnPos: {
-          left: container.style.left,
-          top: container.style.top
+    if (!hasMoved) {
+      // IT WAS A CLICK - OPEN THE MENU
+      if (isVideoPresent) {
+        toggleDropdown();
+        if (activeDropdown && !formatsLoaded) {
+          fetchFormatsFromBackground(); 
         }
+      }
+    } else {
+      // IT WAS A DRAG - SAVE POSITION
+      chrome.storage.local.set({ 
+        uhddFloatX: container.style.left, 
+        uhddFloatY: container.style.top 
       });
     }
-  };
+  });
 
-  container.addEventListener('mousedown', onMouseDown);
-  document.addEventListener('mousemove', onMouseMove);
-  document.addEventListener('mouseup', onMouseUp);
-
-  // Block clicks from hitting underlying video when releasing drag
-  container.addEventListener('click', (e) => {
-    e.stopPropagation();
+  // Close dropdown if clicking outside
+  document.addEventListener('mousedown', (e) => {
+    if (activeDropdown && !container.contains(e.target)) {
+      closeDropdown();
+    }
   });
 }
 
 // ─── Dropdown UI & Logic ──────────────────────────────────────────────────
 
-function toggleDropdown(btn, container) {
+let formatsLoaded = false;
+
+function toggleDropdown() {
   if (activeDropdown) {
     closeDropdown();
     return;
@@ -198,7 +196,7 @@ function toggleDropdown(btn, container) {
     }, { passive: true });
   });
 
-  // Block clicks inside dropdown from propagating to document
+  // Block clicks inside dropdown from propagating
   dropdown.addEventListener('mousedown', e => e.stopPropagation());
   dropdown.addEventListener('click', e => e.stopPropagation());
 
@@ -209,25 +207,22 @@ function toggleDropdown(btn, container) {
     </div>
   `;
   
-  container.appendChild(dropdown);
+  floatRoot.appendChild(dropdown);
   dropdown.offsetHeight; // Force reflow
   dropdown.classList.add('uhdd-visible');
   activeDropdown = dropdown;
+}
 
+function fetchFormatsFromBackground() {
   chrome.runtime.sendMessage({ type: "getFormats" }, (response) => {
-    if (chrome.runtime.lastError) {
-      renderErrorState("Backend offline — start UHDD daemon.");
-      return;
-    }
-    
-    if (!response || !response.ok) {
+    if (chrome.runtime.lastError || !response || !response.ok) {
       const msg = response?.error?.includes("422")
         ? "Unsupported URL or no formats available."
         : "Backend offline — start UHDD daemon.";
       renderErrorState(msg);
       return;
     }
-
+    formatsLoaded = true;
     renderFormatOptions(response.data);
   });
 }
@@ -250,18 +245,11 @@ function renderSuccessState() {
       <div>Download Queued!</div>
     </div>
   `;
-  
-  setTimeout(() => {
-    if (activeDropdown) {
-      activeDropdown.classList.remove('uhdd-visible');
-      setTimeout(closeDropdown, 200);
-    }
-  }, 2000);
+  setTimeout(closeDropdown, 2000);
 }
 
 function renderFormatOptions(data) {
   if (!activeDropdown) return;
-
   if (!data.options || data.options.length === 0) {
     renderErrorState("No formats available.");
     return;
@@ -312,7 +300,7 @@ function renderFormatOptions(data) {
 
     item.addEventListener('click', (e) => {
       e.stopPropagation();
-      dispatchDownload(currentUrl, opt.format_id);
+      dispatchDownload(window.location.href, opt.format_id);
     });
 
     activeDropdown.appendChild(item);
@@ -321,20 +309,13 @@ function renderFormatOptions(data) {
 
 function closeDropdown() {
   if (activeDropdown) {
-    activeDropdown.remove();
-    activeDropdown = null;
+    activeDropdown.classList.remove('uhdd-visible');
+    setTimeout(() => {
+      if (activeDropdown) activeDropdown.remove();
+      activeDropdown = null;
+    }, 200);
   }
 }
-
-// Close dropdown when clicking outside
-document.addEventListener('mousedown', (e) => {
-  if (activeDropdown && !floatingContainer.contains(e.target)) {
-    activeDropdown.classList.remove('uhdd-visible');
-    setTimeout(closeDropdown, 200);
-  }
-});
-
-// ─── Download Dispatch ────────────────────────────────────────────────────
 
 async function dispatchDownload(url, format_id) {
   if (activeDropdown) {

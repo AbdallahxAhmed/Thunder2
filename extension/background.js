@@ -215,19 +215,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const buffer = getBuffer(tabId);
 
     if (message.type === "manifest") {
-      console.log(`${LOG} [tab ${tabId}] m3u8 manifest: ${message.url}`);
+      console.log(`${LOG} [tab ${tabId}] m3u8 manifest cached (no auto-dispatch): ${message.url}`);
       buffer.manifestUrl = message.url;
       if (message.title) buffer.title = message.title;
-      dispatchToUHDD(tabId);
+      // NOTE: NO dispatchToUHDD() — user must explicitly trigger download
       return;
     } else if (message.type === "drm_package") {
-      console.log(`${LOG} [tab ${tabId}] DRM package received`);
+      console.log(`${LOG} [tab ${tabId}] DRM package cached (no auto-dispatch)`);
       buffer.manifestUrl = message.url;
       buffer.pssh = message.pssh;
       buffer.licenseUrl = message.licenseUrl;
       buffer.licenseHeaders = message.licenseHeaders || {};
       if (message.title) buffer.title = message.title;
-      dispatchToUHDD(tabId);
+      // NOTE: NO dispatchToUHDD() — user must explicitly trigger download
       return;
     }
   }

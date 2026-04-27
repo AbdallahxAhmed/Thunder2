@@ -1,12 +1,12 @@
 /* 
- * Premium Dark Theme Styles for UHDD Floating Download Button 
- * All classes prefixed with 'uhdd-' to avoid collisions with host page styles
+ * UHDD Floating Button & Dropdown Styles
+ * Clean Rewrite - Single Body-Level UI
  */
 
 :root {
-  --uhdd-bg-main: rgba(15, 23, 42, 0.85); /* #0F172A with opacity */
-  --uhdd-bg-card: rgba(30, 41, 59, 0.9); /* #1E293B with opacity */
-  --uhdd-bg-hover: rgba(51, 65, 85, 0.95);
+  --uhdd-bg-main: #0F172A;
+  --uhdd-bg-card: #1E293B;
+  --uhdd-bg-hover: #334155;
   --uhdd-text-primary: #F8FAFC;
   --uhdd-text-secondary: #94A3B8;
   --uhdd-accent: #6366F1;
@@ -14,93 +14,91 @@
   --uhdd-success: #10B981;
   --uhdd-error: #EF4444;
   --uhdd-border: rgba(255, 255, 255, 0.1);
-  --uhdd-radius: 12px;
-  --uhdd-z-index: 2147483640;
+  --uhdd-z: 2147483647;
 }
 
-/* ─── Floating Button Container ────────────────────────────────────────────── */
-
+/* ─── Floating Container ─────────────────────────────────────────────────── */
+/* Fixed strictly to the viewport, bypassing stacking context traps */
 .uhdd-floating-btn-container {
   position: fixed !important;
-  top: 20px !important;
-  right: 20px !important;
   z-index: 2147483647 !important;
-  cursor: grab !important;
-  user-select: none !important;
   display: flex !important;
   flex-direction: column !important;
   align-items: flex-end !important;
+  user-select: none !important;
+  pointer-events: auto !important;
 }
 
-.uhdd-floating-btn-container:active {
-  cursor: grabbing !important;
-}
-
-.uhdd-floating-btn-container.uhdd-inactive {
-  filter: grayscale(1) opacity(0.5) !important;
-}
-
-/* ─── Floating Button ────────────────────────────────────────────────────── */
-
+/* ─── The Button Itself ──────────────────────────────────────────────────── */
 .uhdd-floating-btn {
-  width: 40px !important;
-  height: 40px !important;
+  width: 44px !important;
+  height: 44px !important;
   border-radius: 50% !important;
   background-color: var(--uhdd-accent) !important;
   color: #ffffff !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  cursor: pointer !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--uhdd-border) !important;
+  cursor: grab !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--uhdd-border) !important;
   opacity: 0.8 !important;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition: opacity 0.2s, background-color 0.2s, transform 0.2s !important;
   border: none !important;
   padding: 0 !important;
   margin: 0 !important;
-  pointer-events: none !important; /* Let container handle mouse events for dragging */
+  outline: none !important;
+}
+
+.uhdd-floating-btn:active {
+  cursor: grabbing !important;
+  transform: scale(0.95) !important;
 }
 
 .uhdd-floating-btn svg {
-  width: 20px;
-  height: 20px;
-  fill: currentColor;
+  width: 24px !important;
+  height: 24px !important;
+  fill: currentColor !important;
+  pointer-events: none !important;
 }
 
-.uhdd-floating-btn-container:not(.uhdd-inactive):hover .uhdd-floating-btn {
+/* Inactive State (No video detected) */
+.uhdd-inactive .uhdd-floating-btn {
+  filter: grayscale(1) !important;
+  opacity: 0.4 !important;
+}
+
+.uhdd-floating-btn-container:not(.uhdd-inactive) .uhdd-floating-btn:hover {
   opacity: 1 !important;
-  transform: scale(1.05) !important;
   background-color: var(--uhdd-accent-hover) !important;
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4), 0 0 0 1px var(--uhdd-border) !important;
 }
 
-/* ─── Dropdown Container ─────────────────────────────────────────────────── */
-
+/* ─── Dropdown ───────────────────────────────────────────────────────────── */
 .uhdd-dropdown {
   position: absolute !important;
-  top: 50px !important;
+  top: 54px !important;
   right: 0 !important;
-  z-index: 2147483647 !important;
   width: 320px !important;
   background: var(--uhdd-bg-main) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
   border: 1px solid var(--uhdd-border) !important;
-  border-radius: var(--uhdd-radius) !important;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
   max-height: 350px !important;
   overflow-y: auto !important;
   display: flex !important;
   flex-direction: column !important;
   padding: 8px !important;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
   opacity: 0 !important;
   transform: translateY(-10px) !important;
   pointer-events: none !important;
   transition: opacity 0.2s ease, transform 0.2s ease !important;
+  /* Glassmorphism */
+  background: rgba(15, 23, 42, 0.9) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
 }
 
-.uhdd-dropdown.uhdd-visible {
+.uhdd-visible {
   opacity: 1 !important;
   transform: translateY(0) !important;
   pointer-events: auto !important;
@@ -110,19 +108,12 @@
 .uhdd-dropdown::-webkit-scrollbar {
   width: 6px !important;
 }
-.uhdd-dropdown::-webkit-scrollbar-track {
-  background: transparent !important;
-}
 .uhdd-dropdown::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.2) !important;
   border-radius: 10px !important;
-}
-.uhdd-dropdown::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25) !important;
 }
 
 /* ─── Dropdown Items ─────────────────────────────────────────────────────── */
-
 .uhdd-dropdown-item {
   display: flex !important;
   align-items: center !important;
@@ -133,26 +124,20 @@
   border: 1px solid transparent !important;
   border-radius: 8px !important;
   cursor: pointer !important;
-  transition: all 0.2s ease !important;
-  text-align: left !important;
   color: var(--uhdd-text-primary) !important;
+  text-align: left !important;
+  transition: all 0.2s ease !important;
 }
-
-.uhdd-dropdown-item:last-child {
-  margin-bottom: 0 !important;
-}
-
+.uhdd-dropdown-item:last-child { margin-bottom: 0 !important; }
 .uhdd-dropdown-item:hover {
   background: var(--uhdd-bg-hover) !important;
   border-color: var(--uhdd-border) !important;
-  transform: translateX(2px) !important;
 }
-
-.uhdd-dropdown-item.uhdd-recommended {
+.uhdd-recommended {
   border-left: 3px solid var(--uhdd-accent) !important;
 }
 
-/* Layout inside item */
+/* Item details */
 .uhdd-item-left {
   display: flex !important;
   align-items: center !important;
@@ -160,20 +145,16 @@
   flex: 1 !important;
   min-width: 0 !important;
 }
-
 .uhdd-item-icon {
   font-size: 14px !important;
   color: var(--uhdd-text-secondary) !important;
-  flex-shrink: 0 !important;
 }
-
 .uhdd-item-details {
   display: flex !important;
   flex-direction: column !important;
   gap: 2px !important;
   overflow: hidden !important;
 }
-
 .uhdd-item-title {
   font-size: 13px !important;
   font-weight: 600 !important;
@@ -181,50 +162,24 @@
   overflow: hidden !important;
   text-overflow: ellipsis !important;
 }
-
 .uhdd-item-meta {
   font-size: 11px !important;
   color: var(--uhdd-text-secondary) !important;
 }
 
-.uhdd-item-right {
-  display: flex !important;
-  align-items: center !important;
-  gap: 8px !important;
-  flex-shrink: 0 !important;
-}
-
 /* ─── Badges ─────────────────────────────────────────────────────────────── */
-
 .uhdd-badge {
   font-size: 10px !important;
   font-weight: 700 !important;
   padding: 2px 6px !important;
   border-radius: 4px !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.5px !important;
 }
-
-.uhdd-badge-4k {
-  background: rgba(234, 179, 8, 0.2) !important;
-  color: #FBBF24 !important;
-  border: 1px solid rgba(234, 179, 8, 0.3) !important;
-}
-
-.uhdd-badge-qhd {
-  background: rgba(168, 85, 247, 0.2) !important;
-  color: #C084FC !important;
-  border: 1px solid rgba(168, 85, 247, 0.3) !important;
-}
-
-.uhdd-badge-hd, .uhdd-badge-hq {
-  background: rgba(56, 189, 248, 0.2) !important;
-  color: #7DD3FC !important;
-  border: 1px solid rgba(56, 189, 248, 0.3) !important;
-}
+.uhdd-badge-4k { background: rgba(234, 179, 8, 0.2) !important; color: #FBBF24 !important; border: 1px solid rgba(234, 179, 8, 0.3) !important; }
+.uhdd-badge-qhd { background: rgba(168, 85, 247, 0.2) !important; color: #C084FC !important; border: 1px solid rgba(168, 85, 247, 0.3) !important; }
+.uhdd-badge-hd, .uhdd-badge-hq { background: rgba(56, 189, 248, 0.2) !important; color: #7DD3FC !important; border: 1px solid rgba(56, 189, 248, 0.3) !important; }
 
 /* ─── States ─────────────────────────────────────────────────────────────── */
-
 .uhdd-state-container {
   display: flex !important;
   flex-direction: column !important;
@@ -234,7 +189,6 @@
   text-align: center !important;
   color: var(--uhdd-text-primary) !important;
 }
-
 .uhdd-spinner {
   width: 24px !important;
   height: 24px !important;
@@ -244,7 +198,6 @@
   animation: uhdd-spin 1s linear infinite !important;
   margin-bottom: 12px !important;
 }
-
 .uhdd-success-icon {
   width: 32px !important;
   height: 32px !important;
@@ -256,31 +209,10 @@
   margin-bottom: 12px !important;
   color: white !important;
   font-size: 16px !important;
-  animation: uhdd-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) !important;
 }
-
 .uhdd-error-text {
   color: var(--uhdd-error) !important;
   font-size: 13px !important;
   margin-top: 8px !important;
 }
-
-/* ─── Animations ─────────────────────────────────────────────────────────── */
-
-@keyframes uhdd-spin {
-  to { transform: rotate(360deg); }
-}
-
-@keyframes uhdd-pop {
-  0% { transform: scale(0.5); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
-}
-
-@keyframes uhdd-fade-out {
-  0% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-.uhdd-fade-out {
-  animation: uhdd-fade-out 0.5s ease forwards !important;
-}
+@keyframes uhdd-spin { to { transform: rotate(360deg); } }
