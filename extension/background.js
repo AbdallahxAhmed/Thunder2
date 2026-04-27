@@ -233,7 +233,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // Handle messages from the popup or content script
-  if (message.type === "getFormats" || message.action === "GET_TAB_STREAMS") {
+  if (message.type === "getFormats" || message.action === "GET_HYBRID_STREAMS") {
     const tabId = message.tabId ?? sender.tab?.id;
     const url = message.url ?? sender.tab?.url;
 
@@ -243,12 +243,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     const cached = formatCache.get(tabId);
+    const buffer = tabBuffers.get(tabId);
+    const hasRawStream = buffer && !!buffer.manifestUrl;
+
+    function sendHybridResponse(data, fromCache) {
+      const payload = {
+        title: data?.title || buffer?.title || "Unknown Title",
+        url: url,
+        options: data?.options ? [...data.options] : []
+      };
+
+      if (hasRawStream) {
+        payload.options.unshift({
+          type: "video",
+          format_id: "raw-intercept",
+          label: "🎬 Master Stream (Adaptive)",
+          badge: "RAW",
+          vcodec: "unknown",
+          acodec: "unknown",
+          ext: buffer.manifestUrl.split('?')[0].split('.').pop() || "m3u8"
+        });
+      }
+
+      sendResponse({ ok: true, data: payload, fromCache });
+    }
 
     // ── Cache HIT (ready + same URL + fresh) ─────────────────────────
     if (cached && cached.url === url && cached.status === "ready" &&
         (Date.now() - cached.ts) < 300_000) {
       console.log(`${LOG} Format cache HIT for tab ${tabId}`);
-      sendResponse({ ok: true, data: cached.data, fromCache: true });
+      sendHybridResponse(cached.data, true);
       return true;
     }
 
@@ -261,13 +285,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const entry = formatCache.get(tabId);
         if (!entry || waited > 30_000) {
           clearInterval(poll);
-          sendResponse({ ok: false, error: "Timeout waiting for formats" });
+          if (hasRawStream) sendHybridResponse(null, false);
+          else sendResponse({ ok: false, error: "Timeout waiting for formats" });
         } else if (entry.status === "ready") {
           clearInterval(poll);
-          sendResponse({ ok: true, data: entry.data, fromCache: true });
+          sendHybridResponse(entry.data, true);
         } else if (entry.status === "error") {
           clearInterval(poll);
-          sendResponse({ ok: false, error: "Format fetch failed" });
+          if (hasRawStream) sendHybridResponse(null, false);
+          else sendResponse({ ok: false, error: "Format fetch failed" });
         }
       }, 100);
       return true; // keep channel open
@@ -283,12 +309,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
       .then(data => {
         formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready" });
-        sendResponse({ ok: true, data, fromCache: false });
+        sendHybridResponse(data, false);
       })
       .catch(err => {
         console.error(`${LOG} /api/info failed:`, err);
         formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error" });
-        sendResponse({ ok: false, error: err.message });
+        if (hasRawStream) sendHybridResponse(null, false);
+        else sendResponse({ ok: false, error: err.message });
       });
 
     return true; // keep channel open for async response
@@ -300,6 +327,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!payload || !payload.url) {
       sendResponse({ ok: false, error: "Missing payload or url" });
       return true;
+    }
+
+    if (payload.format_id === "raw-intercept") {
+      const tabId = sender.tab?.id;
+      const buffer = tabBuffers.get(tabId);
+      if (!buffer || !buffer.manifestUrl) {
+        sendResponse({ ok: false, error: "Raw stream buffer expired" });
+        return true;
+      }
+      payload.url = buffer.manifestUrl;
+      delete payload.format_id;
+      
+      if (buffer.pssh && buffer.licenseUrl) {
+        payload.pssh = buffer.pssh;
+        payload.license_url = buffer.licenseUrl;
+        payload.license_headers = buffer.licenseHeaders || {};
+      }
+      if (buffer.title) payload.title = buffer.title;
     }
 
     console.log(`${LOG} Triggering download from content script:`, payload);
