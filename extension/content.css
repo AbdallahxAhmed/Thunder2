@@ -35,11 +35,12 @@
   margin: 0;
   outline: none;
   pointer-events: auto; /* Re-enable pointer events since host has pointer-events: none */
+  transform: translate(var(--btn-x, 0), var(--btn-y, 0));
 }
 
 .floating-btn:active {
   cursor: grabbing;
-  transform: scale(0.95);
+  transform: translate(var(--btn-x, 0), var(--btn-y, 0)) scale(0.95);
 }
 
 .floating-btn svg {

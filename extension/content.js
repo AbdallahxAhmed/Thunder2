@@ -55,7 +55,7 @@ function initializeSystem() {
   `;
   document.documentElement.appendChild(host);
 
-  shadowRoot = host.attachShadow({ mode: 'closed' });
+  shadowRoot = host.attachShadow({ mode: 'open' });
 
   // Inject CSS safely via web_accessible_resources
   const link = document.createElement('link');
@@ -185,6 +185,7 @@ function trackVideo(videoElement) {
 function untrackVideo() {
   isTracking = false;
   targetVideo = null;
+  formatsLoaded = false;
   floatBtn.style.display = 'none';
   closeDropdown();
   
@@ -225,8 +226,9 @@ function applyPositionUpdate() {
   if (leftPos < 0) leftPos = rect.left + 16;
   let topPos = rect.top + 16;
   
-  // Apply hardware-accelerated transform to avoid layout thrashing
-  floatBtn.style.transform = `translate(${leftPos}px, ${topPos}px)`;
+  // Apply hardware-accelerated transform via CSS vars to avoid :active layout thrashing
+  host.style.setProperty('--btn-x', `${leftPos}px`);
+  host.style.setProperty('--btn-y', `${topPos}px`);
 
   // Update dropdown position if active
   if (activeDropdown) {
