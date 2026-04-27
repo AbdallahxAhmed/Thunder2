@@ -17,7 +17,7 @@ let currentTop = 0;
 
 let observer = null;
 
-// CSS Reset for host (ensures it escapes host stacking contexts as much as possible)
+// CSS Reset for host (ensures it escapes host stacking contexts)
 const HOST_STYLE = `
   position: fixed !important;
   top: 0 !important;
@@ -36,11 +36,9 @@ const HOST_STYLE = `
 function init() {
   if (uiHost) return;
 
-  // Check if a video already exists
   if (document.querySelector("video")) {
     injectUI();
   } else {
-    // Wait for a video to be added
     observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.addedNodes.length > 0) {
@@ -58,9 +56,8 @@ function init() {
 
 function injectUI() {
   if (uiHost) return;
-  console.log(`${LOG} Video detected, injecting Draggable Ghost UI`);
+  console.log(`${LOG} Video detected, injecting Draggable Hybrid UI`);
 
-  // Default to top right corner with some padding
   currentLeft = window.innerWidth - 80;
   currentTop = 80;
 
@@ -70,19 +67,17 @@ function injectUI() {
 
   shadowRoot = uiHost.attachShadow({ mode: "closed" });
 
-  // Inject CSS inside Shadow Root
   const link = document.createElement("link");
   link.rel = "stylesheet";
   link.href = chrome.runtime.getURL("content.css");
   shadowRoot.appendChild(link);
 
-  // Container
   uiContainer = document.createElement("div");
   uiContainer.id = "uhdd-container";
+  // JS Absolute Positioning - No CSS variables allowed here for positioning
   uiContainer.style.left = currentLeft + "px";
   uiContainer.style.top = currentTop + "px";
   
-  // Button
   floatingBtn = document.createElement("div");
   floatingBtn.className = "floating-btn";
   floatingBtn.innerHTML = `
@@ -92,7 +87,6 @@ function injectUI() {
     </div>
   `;
 
-  // Dropdown
   dropdown = document.createElement("div");
   dropdown.className = "dropdown";
 
@@ -107,30 +101,37 @@ function injectUI() {
 function setupInteractions() {
   floatingBtn.addEventListener("mousedown", onMouseDown);
   
-  // Implement Event Delegation for the download buttons
+  // EVENT DELEGATION: Listen on container for format-btn clicks
   uiContainer.addEventListener('click', (e) => {
-    const btn = e.target.closest('.download-btn');
-    if (!btn) return; // Ignore clicks outside buttons
+    const btn = e.target.closest('.format-btn');
+    if (!btn) return;
     
-    const url = btn.getAttribute('data-url');
+    // Explicitly use window.location.href as the payload URL
+    const url = window.location.href;
     const formatId = btn.getAttribute('data-format-id');
     
-    // Visual feedback
-    btn.textContent = 'Starting...';
-    btn.style.opacity = '0.7';
-    btn.style.pointerEvents = 'none';
+    if (!formatId) return;
 
-    // Dispatch to Background Script (Dumb UI -> Smart Engine)
+    // Visual feedback
+    btn.classList.add("dispatching");
+    const allBtns = uiContainer.querySelectorAll('.format-btn');
+    allBtns.forEach(b => b.disabled = true);
+
+    // DUMB UI: Dispatch to Background Script
     chrome.runtime.sendMessage({
       action: "TRIGGER_DOWNLOAD",
-      payload: { url: url || window.location.href, format_id: formatId, engine: "ytdlp" }
+      payload: { url: url, format_id: formatId, engine: "ytdlp" }
     }, (response) => {
       if (chrome.runtime.lastError || (response && !response.ok)) {
         console.error(`${LOG} Download trigger failed`);
-        btn.textContent = 'Failed';
-        btn.style.color = 'var(--uhdd-error)';
+        btn.querySelector('.quality-label-wrap').innerHTML = '<span style="color:var(--error)">Failed</span>';
+        btn.classList.remove("dispatching");
+        setTimeout(() => {
+          dropdown.classList.remove("open");
+        }, 1500);
         return;
       }
+      
       dropdown.classList.remove("open");
       const indicator = floatingBtn.querySelector(".status-indicator");
       indicator.classList.add("visible");
@@ -144,7 +145,8 @@ function setupInteractions() {
   document.addEventListener("mousedown", (e) => {
     if (dropdown.classList.contains("open")) {
       const path = e.composedPath();
-      if (!path.includes(uiContainer)) {
+      // Ensure click is outside our shadow DOM entirely
+      if (!path.includes(uiHost)) {
         dropdown.classList.remove("open");
       }
     }
@@ -161,7 +163,6 @@ function onMouseDown(e) {
   initialLeft = currentLeft;
   initialTop = currentTop;
 
-  // Bind to document to prevent event hijacking if cursor leaves button
   document.addEventListener("mousemove", onMouseMove);
   document.addEventListener("mouseup", onMouseUp);
 }
@@ -170,23 +171,22 @@ function onMouseMove(e) {
   const dx = e.clientX - dragStartX;
   const dy = e.clientY - dragStartY;
 
-  // Use Math.hypot to distinguish drag vs click (threshold: 5px)
+  // Use Math.hypot to distinguish drag vs click
   if (!isDragging && Math.hypot(dx, dy) > 5) {
     isDragging = true;
-    dropdown.classList.remove("open"); // Close dropdown while dragging
+    dropdown.classList.remove("open");
   }
 
   if (isDragging) {
     currentLeft = initialLeft + dx;
     currentTop = initialTop + dy;
     
-    // Clamp to viewport bounds to prevent getting lost
     const maxX = window.innerWidth - 48;
     const maxY = window.innerHeight - 48;
     currentLeft = Math.max(0, Math.min(currentLeft, maxX));
     currentTop = Math.max(0, Math.min(currentTop, maxY));
 
-    // DRAGGABLE GHOST: Update positioning strictly via JS style.left and style.top
+    // Pure JS positioning, CSS variables are STRICTLY forbidden here
     uiContainer.style.left = currentLeft + "px";
     uiContainer.style.top = currentTop + "px";
   }
@@ -197,7 +197,6 @@ function onMouseUp(e) {
   document.removeEventListener("mouseup", onMouseUp);
 
   if (!isDragging) {
-    // Distance < 5, registered as a click
     toggleDropdown();
   }
   isDragging = false;
@@ -217,10 +216,10 @@ function openDropdown() {
 
   const videoUrl = window.location.href;
 
-  // DUMB UI ENFORCEMENT: Proxy through background.js via GET_TAB_STREAMS
-  chrome.runtime.sendMessage({ action: "GET_TAB_STREAMS", url: videoUrl }, (response) => {
+  // Dispatch GET_HYBRID_STREAMS to background
+  chrome.runtime.sendMessage({ action: "GET_HYBRID_STREAMS", url: videoUrl }, (response) => {
     if (chrome.runtime.lastError || !response || !response.ok) {
-      dropdown.innerHTML = `<div class="loading-text" style="color: var(--uhdd-error)">Failed to fetch formats</div>`;
+      dropdown.innerHTML = `<div class="loading-text" style="color: var(--error)">Failed to fetch formats</div>`;
       return;
     }
     renderFormats(response.data);
@@ -233,44 +232,58 @@ function renderFormats(data) {
     return;
   }
 
-  dropdown.innerHTML = `<div class="dropdown-header">${data.title || "Download Options"}</div>`;
+  dropdown.innerHTML = `<div class="dropdown-header" title="${data.title || "Download Options"}">${data.title || "Download Options"}</div>`;
 
-  data.options.forEach(opt => {
-    const item = document.createElement("div");
-    item.className = "dropdown-item";
+  data.options.forEach((opt, idx) => {
+    const btn = document.createElement("button");
+    btn.className = `format-btn ${opt.type === "audio" ? "audio" : "video"}`;
+    if (idx === 0) btn.classList.add("recommended");
     
-    // Determine badge
-    let badgeHtml = '';
-    let badgeClass = 'badge-sd';
-    if (opt.resolution) {
+    // We attach the format_id for the Event Delegation listener
+    btn.setAttribute('data-format-id', opt.format_id);
+
+    // Icon
+    let iconContent = "▶";
+    if (opt.type === "audio") iconContent = "♫";
+    else if (opt.badge === "4K") iconContent = "4K";
+    else if (opt.badge === "QHD") iconContent = "2K";
+    else if (opt.badge === "HD" || opt.badge === "HQ") iconContent = "HD";
+    else if (opt.badge === "RAW") iconContent = "🎬"; // Used for intercept
+    
+    let badgeHtml = "";
+    if (opt.badge) {
+      badgeHtml = `<span class="quality-badge badge-${opt.badge.toLowerCase()}">${opt.badge}</span>`;
+    } else if (opt.resolution) {
+      // Fallback if background didn't give a badge
       const height = parseInt(opt.resolution.split('x')[1]) || 0;
-      if (height >= 2160) badgeClass = 'badge-4k';
-      else if (height >= 1080) badgeClass = 'badge-hd';
-      
-      badgeHtml = `<span class="badge ${badgeClass}">${height}p</span>`;
-    } else if (opt.audio_only) {
-      badgeHtml = `<span class="badge badge-audio">AUDIO</span>`;
+      let fallbackBadge = 'sd';
+      if (height >= 2160) fallbackBadge = '4k';
+      else if (height >= 1440) fallbackBadge = 'qhd';
+      else if (height >= 1080) fallbackBadge = 'hd';
+      else if (height >= 720) fallbackBadge = 'hq';
+      if (height >= 720) badgeHtml = `<span class="quality-badge badge-${fallbackBadge}">${fallbackBadge.toUpperCase()}</span>`;
+    } else if (opt.type === "audio") {
+      badgeHtml = `<span class="quality-badge badge-audio">AUDIO</span>`;
     }
 
-    let ext = opt.ext || "mp4";
-    let size = opt.filesize ? (opt.filesize / 1024 / 1024).toFixed(1) + " MB" : "Unknown Size";
+    const ext = opt.ext ? opt.ext.toUpperCase() : "MP4";
+    const size = opt.filesize ? (opt.filesize / 1024 / 1024).toFixed(1) + " MB" : "";
+    const detailsText = [ext, size, opt.vcodec !== 'none' ? opt.vcodec : opt.acodec].filter(Boolean).join(" • ");
 
-    item.innerHTML = `
-      <div class="format-info">
-        <span class="format-res">${opt.format_note || opt.resolution || 'Audio'}</span>
-        <span class="format-details">${ext.toUpperCase()} • ${size} • ${opt.vcodec !== 'none' ? opt.vcodec : opt.acodec}</span>
+    btn.innerHTML = `
+      <span class="quality-icon">${iconContent}</span>
+      <div class="quality-label-wrap">
+        <span class="quality-label">
+          ${opt.label || opt.resolution || 'Audio'} ${badgeHtml}
+        </span>
+        <span class="format-details">${detailsText}</span>
       </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        ${badgeHtml}
-        <button class="download-btn" data-url="${data.url}" data-format-id="${opt.format_id}">Download</button>
-      </div>
+      <span class="quality-arrow">↓</span>
     `;
 
-    dropdown.appendChild(item);
+    dropdown.appendChild(btn);
   });
 }
-
-
 
 // Start lazy injection process
 init();
