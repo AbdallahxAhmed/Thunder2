@@ -235,7 +235,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle messages from the popup or content script
   if (message.type === "getFormats" || message.action === "GET_HYBRID_STREAMS") {
     const tabId = message.tabId ?? sender.tab?.id;
-    const url = message.url ?? sender.tab?.url;
+    // Prefer the tab's main-frame URL (sender.tab.url) over message.url.
+    // When the message originates from an iframe, message.url is the iframe's
+    // own URL (e.g. geo.dailymotion.com/player/…) which yt-dlp cannot handle.
+    // sender.tab.url is always the real top-level page URL.
+    // For popup messages sender.tab is undefined, so we fall back to message.url.
+    const url = sender.tab?.url ?? message.url;
 
     if (!tabId || !url) {
       sendResponse({ ok: false, error: "Missing tab context" });
@@ -261,7 +266,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           badge: "RAW",
           vcodec: "unknown",
           acodec: "unknown",
-          ext: buffer.manifestUrl.split('?')[0].split('.').pop() || "m3u8"
+          ext: (/\.(m3u8|mpd|ts|mp4)$/i.exec(buffer.manifestUrl.split('?')[0]) || ["", "m3u8"])[1]
         });
       }
 

@@ -1,3 +1,8 @@
+// Only run in the top-level frame — prevents the button from injecting
+// inside player iframes (e.g. geo.dailymotion.com/player/…) which would
+// send an unsupported embed URL instead of the real page URL.
+if (window !== window.top) return;
+
 const LOG = "[UHDD UI]";
 
 // The Ghost UI State
@@ -212,6 +217,19 @@ function toggleDropdown() {
 
 function openDropdown() {
   dropdown.classList.add("open");
+
+  // Smart positioning: if there is not enough room to the right of the button
+  // (button x + dropdown width > viewport), extend the dropdown to the LEFT
+  // (right-aligned with the button's right edge). Otherwise extend RIGHT.
+  const dropWidth = 320;
+  if (currentLeft + dropWidth > window.innerWidth - 8) {
+    dropdown.style.right = "0";
+    dropdown.style.left  = "auto";
+  } else {
+    dropdown.style.left  = "0";
+    dropdown.style.right = "auto";
+  }
+
   dropdown.innerHTML = '<div class="loading-text">Fetching formats...</div>';
 
   const videoUrl = window.location.href;
