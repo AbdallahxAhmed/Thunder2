@@ -22,8 +22,7 @@ const downloadIcon = `
 </svg>
 `;
 
-// Start Video Discovery (Silent Lazy Injection)
-startVideoObserver();
+
 
 function initializeSystem() {
   if (document.getElementById('uhdd-host')) return;
@@ -427,3 +426,6 @@ async function dispatchDownload(url, format_id) {
     renderErrorState("Backend offline — start UHDD daemon.");
   }
 }
+
+// Start Video Discovery (Silent Lazy Injection)
+startVideoObserver();
