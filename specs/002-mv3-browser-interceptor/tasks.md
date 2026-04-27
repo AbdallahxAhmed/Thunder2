@@ -45,7 +45,7 @@
 - [x] T007 [P] [US5] Add `content_scripts` block for `content.js` and `content.css` to `extension/manifest.json`.
 - [x] T008 [P] [US5] Update `getFormats` message handler in `extension/background.js` to fallback to `sender.tab.id` and `sender.tab.url`.
 - [x] T009 [P] [US5] Create `extension/content.css` with scoped dark-theme styles for floating button and dropdown (`--uhdd-*` prefixed).
-- [x] T010 [US5] Create `extension/content.js` with `MutationObserver`, floating button injection, format fetching, and download dispatch logic.
+- [x] T010 [US5] Implement Ghost Overlay Tracking System with root-level injection, MutationObserver, and Anti-Jank scroll throttling in `extension/content.js`.
 
 ---
 

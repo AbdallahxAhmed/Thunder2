@@ -2,9 +2,9 @@
 
 **Feature Branch**: `003-mv3-browser-interceptor`
 **Created**: 2026-04-26
-**Revised**: 2026-04-27 (v5 — Shadow DOM Floating UI & Draggable Architecture)
+**Revised**: 2026-04-27 (v6 — The Ghost Overlay Tracking System)
 **Status**: Active
-**Input**: v2 established License Proxy Architecture for DRM streams. v3 added "The Native Download Hijacker" — intercepting Chrome's native file downloads and routing them to aria2 via the daemon. v4 added the initial Floating Button. v5 rewrites the floating button into a completely isolated Shadow DOM architecture with body-level injection and robust drag-and-drop to defeat CSS and Event hijacking by hostile sites.
+**Input**: v2 established License Proxy Architecture for DRM streams. v3 added "The Native Download Hijacker" — intercepting Chrome's native file downloads and routing them to aria2 via the daemon. v4 added the initial Floating Button. v5 rewrote it with Shadow DOM. v6 introduces 'The Ghost Overlay Tracking System', abandoning the draggable button to visually anchor the UI directly to the video element's coordinates using getBoundingClientRect() and ResizeObserver/IntersectionObserver, completely decoupled from host CSS stacking contexts and iframe hijacking.
 
 ## Architecture Change (v1 → v2)
 
@@ -37,18 +37,18 @@ The extension uses the `chrome.downloads` API to intercept every download Chrome
 4. The extension dispatches a JSON payload to the UHDD daemon (`/api/download`) with `engine: "aria2"` to explicitly request the aria2 engine.
 5. An **Anti-Loop Guard** prevents infinite recursion — downloads initiated by the daemon or aria2 itself must not be re-intercepted.
 
-## v5 Addition: Shadow DOM Floating UI & Draggable Architecture
+## v6 Addition: The Ghost Overlay Tracking System
 
 ### Motivation
-The v4 injected button suffered from severe CSS and Event hijacking on hostile sites (like Dailymotion), iframe spam, and restrictive stacking contexts. To fix this, v5 rewrites the content scripts to use a completely isolated Shadow DOM architecture with body-level injection and robust drag-and-drop.
+While v5 isolated the UI, the draggable floating button required manual user interaction and didn't feel integrated with the video player. Hostile sites with complex stacking contexts or overlapping transparent divs could still make interaction awkward. To fix this, v6 abandons the draggable button for 'The Ghost Overlay Tracking System'. The UI automatically tracks and anchors itself to the video element.
 
-### v5 Approach (Shadow DOM Content Script)
+### v6 Approach (Ghost Overlay Tracking System)
 The extension injects a content script (`content.js`) into pages:
 1. **Top-Level Enforcement**: The script strictly enforces `if (window !== window.top) return;` to prevent iframe spam.
-2. **Absolute Isolation**: It creates a single host element (`<div id="uhdd-host"></div>`) at the `document.body` level and attaches a Shadow DOM (`mode: 'closed'` or `open`).
-3. **CSS Protection**: The host container uses `position: fixed !important; z-index: 2147483647 !important;`. The internal UI (button and dropdown) and styles (`content.css` dynamically injected) live entirely inside the shadow root, immune to host site stylesheets.
-4. **Draggable Functionality**: Robust drag-and-drop logic (`mousedown`, `mousemove`, `mouseup`) is implemented inside the shadow root. It uses strict coordinate math to differentiate a click (< 5px movement) from a drag-to-move action.
-5. **Data Flow**: The button communicates via `chrome.runtime.sendMessage` to fetch data from the background script and dispatch downloads to the daemon, rendering an inline dark-mode quality picker dropdown.
+2. **Absolute Isolation**: It creates a single host element (`<div id="uhdd-host"></div>`) strictly at the `document.documentElement` root level and attaches a closed Shadow DOM.
+3. **CSS Protection**: The host container uses `position: fixed !important; z-index: 2147483647 !important; top: 0; left: 0; pointer-events: none;`. The internal UI uses `pointer-events: auto`.
+4. **Ghost Overlay Tracking**: Instead of dragging, the script uses a `ResizeObserver`, `IntersectionObserver`, and window `scroll` events on the target `<video>` element. It uses `getBoundingClientRect()` to continuously calculate the video's exact screen coordinates and transforms the Shadow DOM button to anchor it to the top-right corner of the video. This visually anchors the button while remaining completely decoupled from the DOM hierarchy.
+5. **Data Flow**: The button communicates via `chrome.runtime.sendMessage` to fetch data and dispatch downloads to the daemon, rendering an inline dark-mode dropdown.
 
 
 ## User Scenarios & Testing
@@ -117,21 +117,21 @@ A user clicks a direct download link on any website (e.g., a PDF, ZIP, ISO, or e
 
 ---
 
-### User Story 5 - Shadow DOM Floating Download UI (Priority: P2)
+### User Story 5 - The Ghost Overlay Tracking System (Priority: P2)
 
-A user navigates to any website. The extension injects a completely isolated floating download button directly into the `document.body` using a Shadow DOM. This button floats above all content (`position: fixed`, high `z-index`), immune to the site's CSS or event listeners. The user can drag the button around the screen, and clicking it reveals a sleek dark-mode mini-dropdown of available download qualities.
+A user navigates to any website playing a video. The extension automatically injects a floating download button that perfectly anchors itself to the top-right corner of the video player. As the user scrolls, resizes the window, or the video enters fullscreen, the button seamlessly tracks the video's dimensions and stays anchored. It floats above all content (`position: fixed`, absolute max `z-index`), immune to the site's CSS or event listeners.
 
-**Why this priority**: Solves severe styling and event hijacking issues from hostile sites, providing a professional, robust UI that users can reposition as needed.
+**Why this priority**: Solves severe styling and event hijacking issues from hostile sites, providing a professional, integrated UI that tracks the video automatically without manual dragging.
 
-**Independent Test**: Navigate to a complex site like Dailymotion. Verify a single floating download icon appears. Verify you can drag it around the screen. Click it, verify the dropdown appears without CSS corruption.
+**Independent Test**: Navigate to a complex site like Dailymotion. Verify the download icon anchors to the top-right of the video. Scroll the page and resize the window to ensure it tracks perfectly. Click it to verify the dropdown appears.
 
 **Acceptance Scenarios**:
 
-1. **Given** the extension is installed, **When** a top-level page loads (`window === window.top`), **Then** a host element (`<div id="uhdd-host">`) with a Shadow DOM is injected into the body.
+1. **Given** the extension is installed, **When** a top-level page loads (`window === window.top`) and a video is present, **Then** a host element (`<div id="uhdd-host">`) with a Shadow DOM is injected at the root level.
 2. **Given** a page contains iframes, **When** the content script runs in those iframes, **Then** it immediately aborts, preventing iframe spam.
-3. **Given** the floating button is visible, **When** the user clicks and drags the button, **Then** the button moves smoothly across the screen, and dropping it persists its new position.
-4. **Given** the user clicks the button (movement < 5px), **Then** the button sends `{type: "getFormats"}` to the background script and renders the mini-dropdown inside the Shadow DOM.
-5. **Given** the site has aggressive global CSS (e.g., `* { margin: 0 !important; }`), **When** the floating button renders, **Then** its appearance is completely unaffected due to Shadow DOM isolation.
+3. **Given** the video moves due to scrolling or resizing, **When** `getBoundingClientRect()` updates, **Then** the floating button visually tracks and anchors to the video's top-right corner.
+4. **Given** the user clicks the button, **Then** the button sends `{type: "getFormats"}` to the background script and renders the mini-dropdown inside the Shadow DOM.
+5. **Given** the site has aggressive global CSS, **When** the floating button renders, **Then** its appearance is completely unaffected due to Shadow DOM isolation and root-level placement.
 
 ---
 
@@ -150,7 +150,7 @@ A user navigates to any website. The extension injects a completely isolated flo
 - What happens if cookie access is denied for the download domain? → The extension dispatches the payload without cookies; the `cookies` field is optional.
 - What happens if the file URL triggers both the manifest interception and the download hijacker? → Streaming manifests (`.mpd`, `.m3u8`) are excluded from download hijacking since they are already handled by the content script pipeline.
 - What happens if a page has strict Content Security Policy (CSP)? → Content scripts injected by Chrome extensions are exempt from page CSP restrictions.
-- What happens if the site tries to hijack `pointer-events`? → The host element uses `z-index: 2147483647 !important` and drag events are bound safely to prevent interference.
+- What happens if the site tries to hijack `pointer-events`? → The host element uses `z-index: 2147483647 !important` and is injected at the root `documentElement` to avoid stacking context traps.
 - How are iframes handled? → The script strictly enforces `window === window.top`, completely ignoring all iframes.
 
 ## Requirements
@@ -183,15 +183,14 @@ A user navigates to any website. The extension injects a completely isolated flo
 - **FR-024**: The UHDD daemon router MUST respect an explicit `engine` field in the request payload, bypassing normal URL classification when `engine` is provided.
 - **FR-025**: Extension manifest MUST include a `content_scripts` block that injects `content.js` and `content.css` on `<all_urls>` in the `ISOLATED` world at `document_idle` with `all_frames: true`.
 - **FR-026**: Extension `content.js` MUST strictly enforce `window === window.top` to ensure it only runs in the main document.
-- **FR-027**: Extension `content.js` MUST create a single host element (`<div id="uhdd-host"></div>`) and attach a Shadow DOM.
+- **FR-027**: Extension `content.js` MUST create a single host element (`<div id="uhdd-host"></div>`) strictly at the `document.documentElement` root level and attach a closed Shadow DOM.
 - **FR-028**: Extension `content.js` MUST inject the UI and all styling dynamically into the shadow root to achieve absolute CSS isolation.
-- **FR-029**: Extension `content.js` MUST implement coordinate-aware drag-and-drop logic (`mousedown`, `mousemove`, `mouseup`) that distinguishes between dragging and clicking (< 5px movement).
-- **FR-030**: Extension `content.js` MUST assign `position: fixed !important; z-index: 2147483647 !important;` to the host element.
+- **FR-029**: Extension `content.js` MUST implement the Ghost Overlay Tracking System using `getBoundingClientRect()`, `ResizeObserver`, `IntersectionObserver`, and window `scroll` events to visually anchor the UI to the target `<video>` element.
+- **FR-030**: Extension `content.js` MUST assign `position: fixed !important; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 2147483647 !important;` to the host element, allowing internal UI elements to use `pointer-events: auto`.
 - **FR-031**: Extension `content.js` MUST send `{type: "getFormats"}` to `background.js` via `chrome.runtime.sendMessage` when the floating button is clicked.
 - **FR-032**: Extension `content.js` MUST render a dark-mode mini-dropdown inside the shadow root containing the available quality options when format data is received.
 - **FR-033**: Extension `content.js` MUST dispatch `{url, engine: "ytdlp", format_id}` to `POST /api/download` when the user selects a quality from the dropdown.
 - **FR-034**: Extension `content.js` MUST close the dropdown when the user clicks outside of it or after a quality is selected.
-- **FR-035**: Extension `content.js` MUST persist the dragged position of the button across navigations using `chrome.storage.local`.
 
 ### Key Entities
 
@@ -205,9 +204,9 @@ A user navigates to any website. The extension injects a completely isolated flo
 - **Hijacked Download**: A native Chrome download intercepted by `chrome.downloads.onCreated`, cancelled, and re-dispatched to the daemon for aria2 handling.
 - **Anti-Loop Guard**: A mechanism (URL set + localhost check) that prevents the extension from re-intercepting downloads that the daemon or aria2 itself initiated.
 - **Download Metadata**: The set of HTTP context captured from a hijacked download: URL, Referer header, User-Agent string, and serialized cookies.
-- **Shadow Host (`#uhdd-host`)**: The body-level container holding the Shadow Root.
+- **Shadow Host (`#uhdd-host`)**: The root-level container holding the Shadow Root, acting as a transparent fullscreen overlay.
 - **Shadow Root**: The isolated DOM boundary preventing CSS and event leakage.
-- **Floating Button**: A small draggable download icon injected into the shadow root, serving as the entry point for the in-page quality picker.
+- **Floating Button**: A small download icon injected into the shadow root, anchored to the video's coordinates.
 - **Mini-Dropdown**: A dark-mode overlay rendered inside the shadow root, displaying available download qualities.
 
 ## Success Criteria
@@ -224,9 +223,9 @@ A user navigates to any website. The extension injects a completely isolated flo
 - **SC-008**: When the daemon is offline, native downloads fall through to Chrome's default handler with zero data loss.
 - **SC-009**: aria2 downloads initiated via the hijacker include correct Referer, User-Agent, and Cookies, resulting in successful downloads from sites that enforce these headers.
 - **SC-010**: The host element (`#uhdd-host`) is injected into the body exactly once per top-level page, with zero injections in iframes.
-- **SC-011**: Dragging the button updates its position smoothly and accurately without triggering a click event.
+- **SC-011**: The UI successfully tracks the `<video>` element during window resizes, scrolling, and DOM mutations, accurately maintaining its anchored position using `getBoundingClientRect()`.
 - **SC-012**: The mini-dropdown renders quality options securely within the Shadow DOM, maintaining its dark-mode appearance even on pages with aggressive global CSS overrides.
-- **SC-013**: The button's position is saved to `chrome.storage.local` and restored correctly upon page reload.
+- **SC-013**: The button hides seamlessly when the video element is out of the viewport (via IntersectionObserver).
 
 ## Assumptions
 

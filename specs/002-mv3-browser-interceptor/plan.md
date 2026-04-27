@@ -5,7 +5,7 @@
 
 ## Summary
 
-The v5 update completely rewrites the content script (`content.js`) and its stylesheet (`content.css`) to use a Shadow DOM architecture. This is necessary to fix severe CSS corruption and Event hijacking on hostile sites (like Dailymotion). We are wiping the old MutationObserver and DOM-injection logic and starting fresh. The new script injects a single body-level host container, attaches a closed Shadow DOM, and renders a draggable floating button immune to host styling. Iframes are strictly ignored (`window !== window.top`).
+The v6 update completely rewrites the content script (`content.js`) and its stylesheet (`content.css`) to use 'The Ghost Overlay Tracking System'. This completely abandons the manual drag-and-drop mechanics in favor of a robust system that automatically anchors the UI to the active `<video>` element on the page using `getBoundingClientRect()`, `ResizeObserver`, and `scroll` events. The host container is injected strictly at the `document.documentElement` root to completely bypass stacking context traps, and uses a closed Shadow DOM for absolute CSS isolation. Iframes are strictly ignored (`window !== window.top`).
 
 ## Technical Context
 
@@ -15,9 +15,9 @@ The v5 update completely rewrites the content script (`content.js`) and its styl
 **Testing**: Manual Chrome testing on hostile sites (Dailymotion, YouTube)
 **Target Platform**: Chrome 102+ (extension)
 **Project Type**: Content script + Shadow DOM injected UI overlay
-**Performance Goals**: UI renders instantly on `document_idle`; zero performance impact from DOM scanning (no more MutationObserver)
-**Constraints**: Must completely isolate CSS via Shadow DOM; must ignore iframes to prevent spam; drag logic must not trigger clicks
-**Scale/Scope**: Single browser instance, runs on top-level frames only
+**Performance Goals**: UI anchors instantly on `document_idle`; low overhead tracking using native observers (`ResizeObserver`, `IntersectionObserver`).
+**Constraints**: Must completely isolate CSS via Shadow DOM; must ignore iframes to prevent spam; must completely remove Euclidean math (`Math.hypot`); must inject strictly at the `document.documentElement` root.
+**Scale/Scope**: Single browser instance, runs on top-level frames only.
 
 ## Constitution Check
 
@@ -139,28 +139,29 @@ if (message.type === "getFormats") {
 
 ### 3. `extension/content.js` (REWRITE)
 
-**What it is**: The core content script that injects the Shadow DOM and draggable floating UI.
+**What it is**: The core content script that implements the Ghost Overlay Tracking System.
 
-**Architecture** (following `shadow_dom_ui.md` skill rules):
+**Architecture** (following `ghost-overlay-tracker` skill rules):
 
 #### 3a. Top-Level Enforcement
 - Check `if (window !== window.top) return;` immediately on load.
 - Prevents multiple buttons from rendering inside ads and embedded iframes.
 
-#### 3b. Shadow DOM Initialization
+#### 3b. Root-Level Shadow DOM Initialization
 - Create `<div id="uhdd-host"></div>`.
-- Apply `position: fixed !important; z-index: 2147483647 !important; pointer-events: none;` to the host.
+- Apply `position: fixed !important; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2147483647 !important; pointer-events: none;` to the host.
 - Attach shadow root: `const shadow = host.attachShadow({ mode: 'closed' });`.
-- Inject `content.css` into the shadow root (either by fetching the URL or using a `<link>`).
-- Append host to `document.body`.
+- Inject `content.css` into the shadow root via `<link>`.
+- Append host strictly to `document.documentElement`.
 
-#### 3c. Draggable Floating Button
-- Create the button inside the shadow root. Restore position from `chrome.storage.local`.
-- **Drag Logic**: Bind `mousedown`, `mousemove` (on document), `mouseup` (on document).
-- Use `pointer-events: auto` on the button itself.
-- Track `startX`, `startY` and calculate total movement delta.
-- If `delta < 5px`, treat as a **Click** and toggle the dropdown.
-- If `delta >= 5px`, treat as a **Drag**, update position, and save to `chrome.storage.local` on `mouseup`.
+#### 3c. Ghost Overlay Tracking System
+- Completely remove all legacy drag-and-drop logic (`mousedown`, `mousemove`, `mouseup`) and Euclidean math (`Math.hypot`).
+- Create `trackVideo(videoElement)` function:
+  - Uses `getBoundingClientRect()` on the video to calculate precise coordinates.
+  - Applies coordinates to the button via CSS `transform` or `top`/`left`.
+  - Sets up a `ResizeObserver` on the video to automatically call `updatePosition()`.
+  - Sets up an `IntersectionObserver` on the video to hide the button when the video is out of view.
+  - Attaches a window `scroll` event listener with `capture: true` to constantly sync the overlay position during fast scrolling.
 
 #### 3d. Format Fetching & Mini-Dropdown
 - On Click: Send `{type: "getFormats"}` via `chrome.runtime.sendMessage`.
@@ -171,7 +172,7 @@ if (message.type === "getFormats") {
 - `POST` to `http://localhost:8000/api/download` with `{url: window.location.href, engine: "ytdlp", format_id}`
 - On success → show temporary success indicator.
 
-**Estimated lines**: ~250 lines
+**Estimated lines**: ~220 lines
 
 ---
 
@@ -230,8 +231,8 @@ if (message.type === "getFormats") {
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Host page hijacks pointer events | Button unresponsive | Host element uses `z-index: 2147483647 !important`. `pointer-events: none` on host, `pointer-events: auto` on button. |
+| Host page hijacks pointer events or stacking contexts | Button unresponsive or hidden | Host element uses `z-index: 2147483647 !important` and is injected at the `document.documentElement` root to avoid `body` traps. |
 | Iframe spam | Duplicate buttons | strict `if (window !== window.top) return;` at the top of `content.js` |
-| Dragging triggers a click | Annoying UX | Strict coordinate math: calculate `Math.hypot(dx, dy)`. If `< 5px`, it's a click. |
-| Content script cannot load `content.css` | Unstyled UI | Inject CSS using `chrome.runtime.getURL` and a `<link>` tag inside the Shadow DOM, or fetch and inject as `<style>`. |
+| Fast scrolling desyncs overlay | Overlay detaches from video | Use `window.addEventListener('scroll', updatePos, true)` (capturing phase) to perfectly sync the overlay. |
+| Content script cannot load `content.css` | Unstyled UI | Inject CSS using `chrome.runtime.getURL` and a `<link>` tag inside the Shadow DOM. |
 | Cross-origin click outside | Dropdown doesn't close | Event listener on top document checks `event.composedPath()` to see if the click originated inside the shadow root. |
