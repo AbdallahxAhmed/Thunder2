@@ -50,6 +50,15 @@ class DownloadRequest(BaseModel):
     title: Optional[str] = Field(
         default=None, description="Page title for human-readable filenames"
     )
+    referer: Optional[str] = Field(
+        default=None, description="HTTP Referer header for the download"
+    )
+    engine: Optional[str] = Field(
+        default=None, description="Explicit engine override (aria2, ytdlp, m3u8)"
+    )
+    format_id: Optional[str] = Field(
+        default=None, description="yt-dlp format ID for quality selection (e.g., '137+140')"
+    )
 
     @field_validator("url")
     @classmethod
@@ -77,6 +86,15 @@ class DownloadRequest(BaseModel):
                         "(hexadecimal strings separated by a colon). "
                         "Multiple pairs separated by commas."
                     )
+        return v
+
+    @field_validator("engine")
+    @classmethod
+    def validate_engine(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            valid = {"aria2", "ytdlp", "m3u8"}
+            if v not in valid:
+                raise ValueError(f"engine must be one of: {', '.join(sorted(valid))}")
         return v
 
 
@@ -164,3 +182,25 @@ class HealthResponse(BaseModel):
     status: str  # "healthy" or "degraded"
     uptime_seconds: float
     engines: list[EngineHealth]
+
+
+class QualityOption(BaseModel):
+    """A simplified, opinionated quality tier for the popup picker."""
+
+    label: str = Field(..., description="Human-readable label (e.g. '1080p')")
+    format_id: str = Field(..., description="yt-dlp format selection string")
+    type: str = Field(..., description="'video' or 'audio'")
+    badge: Optional[str] = Field(
+        default=None, description="Optional badge text (e.g. 'HD', '4K', 'HQ')"
+    )
+
+
+class InfoResponse(BaseModel):
+    """Response for GET /api/info."""
+
+    url: str
+    title: Optional[str] = None
+    thumbnail: Optional[str] = None
+    duration: Optional[float] = None
+    max_height: Optional[int] = None
+    options: list[QualityOption] = Field(default_factory=list)

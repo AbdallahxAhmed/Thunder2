@@ -1,0 +1,371 @@
+﻿[
+  {
+    "GroupId": "10",
+    "Bandwidth": 7399295,
+    "Codecs": "avc1.64002a",
+    "Resolution": "1920x1080",
+    "Extension": "mp4",
+    "AudioId": "2",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/video/b1355e33-4de3-4ea9-a0b2-0cd560b95299/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  },
+  {
+    "GroupId": "9",
+    "Bandwidth": 4712010,
+    "Codecs": "avc1.640029",
+    "Resolution": "1920x1080",
+    "Extension": "mp4",
+    "AudioId": "2",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/video/7bdc2726-02e3-4ca5-b5c2-c451b1d7052c/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  },
+  {
+    "GroupId": "8",
+    "Bandwidth": 3186253,
+    "Codecs": "avc1.640029",
+    "Resolution": "1280x720",
+    "Extension": "mp4",
+    "AudioId": "2",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/video/98ad96a4-885d-410f-bf17-5a829fbec175/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  },
+  {
+    "GroupId": "7",
+    "Bandwidth": 1484833,
+    "Codecs": "avc1.640029",
+    "Resolution": "1280x720",
+    "Extension": "mp4",
+    "AudioId": "2",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/video/aa0dd0c4-7cd4-4eff-b9eb-f9c616a4f9d5/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  },
+  {
+    "GroupId": "4",
+    "Bandwidth": 961115,
+    "Codecs": "avc1.4d4028",
+    "Resolution": "896x504",
+    "Extension": "mp4",
+    "AudioId": "2",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/video/21b8fe34-bbef-4195-b0a9-6e359e335772/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  },
+  {
+    "GroupId": "3",
+    "Bandwidth": 594887,
+    "Codecs": "avc1.4d4028",
+    "Resolution": "640x360",
+    "Extension": "mp4",
+    "AudioId": "2",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/video/9a491adf-a388-44ba-9bdc-9ec170b36700/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  },
+  {
+    "GroupId": "6",
+    "Bandwidth": 302542,
+    "Codecs": "avc1.42c01f",
+    "Resolution": "426x240",
+    "Extension": "mp4",
+    "AudioId": "2",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/video/5eeb4b96-f317-453a-a1a7-3f396a100b7c/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  },
+  {
+    "GroupId": "5",
+    "Bandwidth": 104077,
+    "Codecs": "avc1.42c01f",
+    "Resolution": "256x144",
+    "Extension": "mp4",
+    "AudioId": "2",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/video/42afc7c7-211c-4930-aaef-77cd620a2dc8/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  },
+  {
+    "MediaType": "AUDIO",
+    "GroupId": "2",
+    "Language": "ara",
+    "Bandwidth": 193411,
+    "Codecs": "mp4a.40.2",
+    "Channels": "2",
+    "Extension": "mp4",
+    "Role": "Main",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/audio/ca18e858-b724-46a5-98f9-fb5bd96c80e3/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  },
+  {
+    "MediaType": "AUDIO",
+    "GroupId": "1",
+    "Language": "ara",
+    "Bandwidth": 128491,
+    "Codecs": "mp4a.40.2",
+    "Channels": "2",
+    "Extension": "mp4",
+    "Role": "Main",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/audio/4119791e-6637-4b52-bc40-ad79887b71bb/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  },
+  {
+    "MediaType": "AUDIO",
+    "GroupId": "0",
+    "Language": "ara",
+    "Bandwidth": 96317,
+    "Codecs": "mp4a.40.2",
+    "Channels": "2",
+    "Extension": "mp4",
+    "Role": "Main",
+    "PeriodId": "0",
+    "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "OriginalUrl": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/master-2beda315-a732-4668-8ead-d7b12b6e18f9.mpd?hdnea=st=0~exp=1777300650~acl=/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=1e8cafa3f9ed122d1ca5bf4f5f3558a531216efc909392b3cc79350a1503f7a7",
+    "Playlist": {
+      "Url": "",
+      "IsLive": false,
+      "RefreshIntervalMs": 30000,
+      "TotalDuration": 2061.78,
+      "MediaParts": [
+        {
+          "MediaSegments": [
+            {
+              "Index": 0,
+              "Duration": 2061.78,
+              "EncryptInfo": {
+                "Method": "CENC"
+              },
+              "IsEncrypted": true,
+              "Url": "https://dve-streams.akamaized.net/ns-002/cf-001/MjAyNg/NA/M_jQ/c68c84bf-d2da-4521-8d9d-5687e2e3531d/exp=1777387022~acl=%2f*~id=99b5a7d9-4e6a-4156-a574-87f038cbb4fe~data=hdntl,aXA9MTk3LjE2NC4yMi4xOTcmZXhwPTE3NzczMDA2NTAmZWlkPTk0ODk4NiZvaWQ9MTg5JnR5cGU9Vk9EJnVpZD1aY2kzcmp8ZTk2ZjdmM2MtZDg3OS00YWVhLWFkY2QtMmU0MzFiNzZlNDhkJmNpZD1kY2UuYWxqYXplZXJhJnB0PW51bGw~hmac=241983f421189938633448997efb951705f41d6b135f2b6a6f5e6dce735e2137/audio/dcccec10-f7d0-447b-9579-16def4d775ae/init.mp4"
+            }
+          ]
+        }
+      ]
+    },
+    "SegmentsCount": 1
+  }
+]

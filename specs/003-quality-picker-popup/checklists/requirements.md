@@ -1,4 +1,4 @@
-# Specification Quality Checklist: IDM-Style Floating Download Button (v4)
+# Specification Quality Checklist: Quality Picker Popup
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-04-27
@@ -6,7 +6,7 @@
 
 ## Content Quality
 
-- [x] No implementation details (languages, frameworks, APIs) — spec uses technology-neutral language for user scenarios
+- [x] No implementation details (languages, frameworks, APIs)
 - [x] Focused on user value and business needs
 - [x] Written for non-technical stakeholders
 - [x] All mandatory sections completed
@@ -16,19 +16,21 @@
 - [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
-- [x] Success criteria are technology-agnostic
-- [x] All acceptance scenarios are defined (6 scenarios for US5)
-- [x] Edge cases are identified (7 new edge cases for v4)
-- [x] Scope is clearly bounded (Shadow DOM out of scope, main-document videos only)
+- [x] Success criteria are technology-agnostic (no implementation details)
+- [x] All acceptance scenarios are defined
+- [x] Edge cases are identified
+- [x] Scope is clearly bounded
 - [x] Dependencies and assumptions identified
 
 ## Feature Readiness
 
-- [x] All functional requirements have clear acceptance criteria (FR-025 through FR-035)
+- [x] All functional requirements have clear acceptance criteria
 - [x] User scenarios cover primary flows
-- [x] Feature meets measurable outcomes defined in Success Criteria (SC-010 through SC-013)
+- [x] Feature meets measurable outcomes defined in Success Criteria
 - [x] No implementation details leak into specification
 
 ## Notes
 
 - All items pass. Spec is ready for `/speckit-plan`.
+- The spec deliberately avoids mentioning specific API paths, Python types, or CSS properties — those belong in the implementation plan.
+- Edge cases cover the key failure modes: empty formats, long lists, rapid clicks, timeout, invalid format IDs.

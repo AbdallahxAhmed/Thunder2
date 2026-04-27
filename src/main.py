@@ -14,9 +14,10 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+import yt_dlp
 
 from src.config import settings
 from src.engines import ENGINE_MAP, _register_defaults, get_engine
@@ -30,6 +31,8 @@ from src.models import (
     ErrorResponse,
     HealthResponse,
     StatusResponse,
+    InfoResponse,
+    QualityOption,
 )
 from src.router import classify
 
@@ -205,12 +208,15 @@ async def _execute_download(job_id: str, request: DownloadRequest) -> None:
 @app.post("/api/download", status_code=202, response_model=DownloadResponse)
 async def submit_download(request: DownloadRequest) -> JSONResponse:
     """Accept a download request, classify, and dispatch to the right engine."""
-    engine_name = classify(
-        request.url,
-        drm_keys=request.drm_keys,
-        pssh=request.pssh,
-        license_url=request.license_url,
-    )
+    if request.engine:
+        engine_name = request.engine
+    else:
+        engine_name = classify(
+            request.url,
+            drm_keys=request.drm_keys,
+            pssh=request.pssh,
+            license_url=request.license_url,
+        )
 
     # Check engine availability
     engine_status = next(
@@ -268,6 +274,145 @@ async def get_download_status(job_id: str) -> JSONResponse:
             updated_at=job.updated_at,
         ).model_dump(mode="json"),
     )
+
+
+@app.get("/api/info", response_model=InfoResponse)
+async def get_media_info(url: str = Query(..., min_length=1)) -> JSONResponse:
+    """Query available formats for a media URL via yt-dlp.
+
+    Returns a curated, quality-obsessed list of resolution tiers.
+    Every video option uses ``bestvideo[height<=H]+bestaudio/best``
+    to guarantee merged audio+video in the download.  Tiers are only
+    included when the source actually has formats at that resolution.
+    """
+    engine = get_engine("ytdlp")
+    if engine is None:
+        return JSONResponse(
+            status_code=503,
+            content=ErrorResponse(
+                error_code="ENGINE_UNAVAILABLE",
+                message="ytdlp engine is not available",
+            ).model_dump(),
+        )
+
+    try:
+        info = await asyncio.to_thread(engine.extract_info, url)
+    except yt_dlp.utils.DownloadError as exc:
+        return JSONResponse(
+            status_code=422,
+            content=ErrorResponse(
+                error_code="EXTRACTION_ERROR",
+                message="yt-dlp could not extract info from this URL",
+            ).model_dump(),
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error in /api/info")
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error_code="INTERNAL_ERROR",
+                message=str(exc),
+            ).model_dump(),
+        )
+
+    # ── Analyse available video formats ────────────────────────────────
+    # Collect the set of heights that actually exist, along with codec
+    # quality metadata so we can annotate badges.
+    available_heights: set[int] = set()
+    # Track best codec per height for badge logic
+    codec_rank = {"av01": 3, "vp9": 2, "vp09": 2, "avc1": 1, "h264": 1}
+    best_codec_per_height: dict[int, str] = {}   # height → best codec prefix
+    best_tbr_per_height: dict[int, float] = {}   # height → best total bitrate
+
+    for f in info.get("formats", []):
+        h = f.get("height")
+        vcodec = f.get("vcodec") or ""
+        if not h or not isinstance(h, (int, float)) or vcodec == "none":
+            continue
+        h = int(h)
+        available_heights.add(h)
+
+        # Score codec
+        codec_prefix = vcodec.split(".")[0].lower()
+        rank = codec_rank.get(codec_prefix, 0)
+        prev_rank = codec_rank.get(best_codec_per_height.get(h, ""), 0)
+        if rank > prev_rank:
+            best_codec_per_height[h] = codec_prefix
+
+        # Track best bitrate
+        tbr = f.get("tbr") or 0
+        if tbr > best_tbr_per_height.get(h, 0):
+            best_tbr_per_height[h] = tbr
+
+    max_height = max(available_heights) if available_heights else 0
+
+    # ── Build opinionated quality tiers ────────────────────────────────
+    # Full resolution ladder — only tiers the source supports.
+    # The max resolution is folded into "Best Quality (Xp)" and its
+    # standalone tier is suppressed to avoid redundancy.
+    TIERS = [
+        (2160, "4K (2160p)", "4K"),
+        (1440, "1440p",      "QHD"),
+        (1080, "1080p",      "HD"),
+        (720,  "720p",       "HD"),
+        (480,  "480p",       None),
+        (360,  "360p",       None),
+        (240,  "240p",       None),
+        (144,  "144p",       None),
+    ]
+
+    # Map height → human label for the "Best Quality" heading
+    height_labels = {h: lbl for h, lbl, _ in TIERS}
+    best_label_suffix = height_labels.get(max_height, f"{max_height}p") if max_height > 0 else ""
+
+    options: list[QualityOption] = []
+
+    # Lead with merged "Best Quality (Xp)"
+    best_badge = "4K" if max_height >= 2160 else "HD" if max_height >= 720 else None
+    options.append(QualityOption(
+        label=f"Best Quality ({best_label_suffix})" if best_label_suffix else "Best Quality",
+        format_id="bestvideo+bestaudio/best",
+        type="video",
+        badge=best_badge,
+    ))
+
+    # Resolution tiers — skip the tier that matches max_height (already
+    # covered by "Best Quality") to eliminate the redundant button.
+    for height, label, badge in TIERS:
+        if height == max_height:
+            continue  # folded into Best Quality above
+        if max_height >= height:
+            # If best codec at this height is vp9/av01 → mark as HQ
+            bc = best_codec_per_height.get(height, "")
+            effective_badge = badge
+            if bc in ("av01", "vp9", "vp09") and height >= 720:
+                effective_badge = "HQ" if badge is None else badge
+
+            options.append(QualityOption(
+                label=label,
+                format_id=f"bestvideo[height<={height}]+bestaudio/best",
+                type="video",
+                badge=effective_badge,
+            ))
+
+    # Always offer Audio Only
+    options.append(QualityOption(
+        label="Audio Only (best)",
+        format_id="bestaudio/best",
+        type="audio",
+        badge=None,
+    ))
+
+    resp = InfoResponse(
+        url=url,
+        title=info.get("title"),
+        thumbnail=info.get("thumbnail"),
+        duration=info.get("duration"),
+        max_height=max_height if max_height > 0 else None,
+        options=options,
+    )
+
+    return JSONResponse(content=resp.model_dump(mode="json"))
 
 
 @app.get("/api/health", response_model=HealthResponse)

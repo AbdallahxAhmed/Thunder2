@@ -26,8 +26,10 @@ class YtdlpClient:
 
     def _build_opts(self, request: DownloadRequest) -> dict[str, Any]:
         """Construct the yt-dlp options dict from a download request."""
+        format_str = request.format_id if getattr(request, 'format_id', None) else "bestvideo+bestaudio/best"
+        
         opts: dict[str, Any] = {
-            "format": "bestvideo+bestaudio/best",
+            "format": format_str,
             "outtmpl": os.path.join(
                 os.path.abspath(self.download_dir), "%(title).200s.%(ext)s"
             ),
@@ -48,6 +50,12 @@ class YtdlpClient:
             opts.setdefault("http_headers", {})["Cookie"] = request.cookies
 
         return opts
+
+    def extract_info(self, url: str) -> dict:
+        """Fetch available formats without downloading."""
+        opts = {"quiet": True, "no_warnings": True}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=False)
 
     def execute(self, job: DownloadJob, request: DownloadRequest) -> dict:
         """Run a media download end-to-end (blocking).

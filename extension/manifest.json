@@ -4,7 +4,8 @@
   "version": "1.0",
   "description": "Intercepts DRM manifests (.mpd) and Widevine keys (KID:KEY), dispatching them to the local UHDD daemon.",
   "permissions": [
-    "notifications"
+    "notifications",
+    "downloads"
   ],
   "host_permissions": [
     "*://*/*",
@@ -34,8 +35,25 @@
       ],
       "run_at": "document_start",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "UHDD Quality Picker"
+  },
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

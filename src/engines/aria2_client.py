@@ -61,6 +61,7 @@ class Aria2Client:
         url: str,
         user_agent: str | None = None,
         cookies: str | None = None,
+        referer: str | None = None,
     ) -> str:
         """Submit a new download and return the aria2 GID."""
         options: dict[str, str] = {
@@ -73,6 +74,8 @@ class Aria2Client:
             options["user-agent"] = user_agent
         if cookies:
             options["header"] = f"Cookie: {cookies}"
+        if referer:
+            options["referer"] = referer
 
         gid = self._rpc("aria2.addUri", [[url], options])
         logger.info(
@@ -103,6 +106,7 @@ class Aria2Client:
             url=request.url,
             user_agent=request.user_agent,
             cookies=request.cookies,
+            referer=getattr(request, 'referer', None),
         )
 
         # Poll until completion
