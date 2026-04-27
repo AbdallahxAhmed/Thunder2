@@ -1,218 +1,207 @@
 /* 
  * UHDD Floating Button & Dropdown Styles
- * Clean Rewrite - Single Body-Level UI
+ * Shadow DOM Architecture (No prefixes needed)
  */
 
 :root {
-  --uhdd-bg-main: #0F172A;
-  --uhdd-bg-card: #1E293B;
-  --uhdd-bg-hover: #334155;
-  --uhdd-text-primary: #F8FAFC;
-  --uhdd-text-secondary: #94A3B8;
-  --uhdd-accent: #6366F1;
-  --uhdd-accent-hover: #4F46E5;
-  --uhdd-success: #10B981;
-  --uhdd-error: #EF4444;
-  --uhdd-border: rgba(255, 255, 255, 0.1);
-  --uhdd-z: 2147483647;
-}
-
-/* ─── Floating Container ─────────────────────────────────────────────────── */
-/* Fixed strictly to the viewport, bypassing stacking context traps */
-.uhdd-floating-btn-container {
-  position: fixed !important;
-  z-index: 2147483647 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: flex-end !important;
-  user-select: none !important;
-  pointer-events: auto !important;
+  --bg-main: #0F172A;
+  --bg-card: #1E293B;
+  --bg-hover: #334155;
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --accent: #6366F1;
+  --accent-hover: #4F46E5;
+  --success: #10B981;
+  --error: #EF4444;
+  --border: rgba(255, 255, 255, 0.1);
 }
 
 /* ─── The Button Itself ──────────────────────────────────────────────────── */
-.uhdd-floating-btn {
-  width: 44px !important;
-  height: 44px !important;
-  border-radius: 50% !important;
-  background-color: var(--uhdd-accent) !important;
-  color: #ffffff !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  cursor: grab !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--uhdd-border) !important;
-  opacity: 0.8 !important;
-  transition: opacity 0.2s, background-color 0.2s, transform 0.2s !important;
-  border: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  outline: none !important;
+.floating-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border);
+  opacity: 0.8;
+  transition: opacity 0.2s, background-color 0.2s, transform 0.2s;
+  border: none;
+  padding: 0;
+  margin: 0;
+  outline: none;
+  pointer-events: auto; /* Re-enable pointer events since host has pointer-events: none */
 }
 
-.uhdd-floating-btn:active {
-  cursor: grabbing !important;
-  transform: scale(0.95) !important;
+.floating-btn:active {
+  cursor: grabbing;
+  transform: scale(0.95);
 }
 
-.uhdd-floating-btn svg {
-  width: 24px !important;
-  height: 24px !important;
-  fill: currentColor !important;
-  pointer-events: none !important;
+.floating-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+  pointer-events: none;
 }
 
 /* Inactive State (No video detected) */
-.uhdd-inactive .uhdd-floating-btn {
-  filter: grayscale(1) !important;
-  opacity: 0.4 !important;
+.inactive .floating-btn {
+  filter: grayscale(1);
+  opacity: 0.4;
 }
 
-.uhdd-floating-btn-container:not(.uhdd-inactive) .uhdd-floating-btn:hover {
-  opacity: 1 !important;
-  background-color: var(--uhdd-accent-hover) !important;
+.host-container:not(.inactive) .floating-btn:hover {
+  opacity: 1;
+  background-color: var(--accent-hover);
 }
 
 /* ─── Dropdown ───────────────────────────────────────────────────────────── */
-.uhdd-dropdown {
-  position: absolute !important;
-  top: 54px !important;
-  right: 0 !important;
-  width: 320px !important;
-  background: var(--uhdd-bg-main) !important;
-  border: 1px solid var(--uhdd-border) !important;
-  border-radius: 12px !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6) !important;
-  max-height: 350px !important;
-  overflow-y: auto !important;
-  display: flex !important;
-  flex-direction: column !important;
-  padding: 8px !important;
-  font-family: system-ui, -apple-system, sans-serif !important;
-  opacity: 0 !important;
-  transform: translateY(-10px) !important;
-  pointer-events: none !important;
-  transition: opacity 0.2s ease, transform 0.2s ease !important;
+.dropdown {
+  position: absolute;
+  top: 54px;
+  right: 0;
+  width: 320px;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  max-height: 350px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  font-family: system-ui, -apple-system, sans-serif;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
   /* Glassmorphism */
-  background: rgba(15, 23, 42, 0.9) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
+  background: rgba(15, 23, 42, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
-.uhdd-visible {
-  opacity: 1 !important;
-  transform: translateY(0) !important;
-  pointer-events: auto !important;
+.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 /* Scrollbar */
-.uhdd-dropdown::-webkit-scrollbar {
-  width: 6px !important;
+.dropdown::-webkit-scrollbar {
+  width: 6px;
 }
-.uhdd-dropdown::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2) !important;
-  border-radius: 10px !important;
+.dropdown::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
 }
 
 /* ─── Dropdown Items ─────────────────────────────────────────────────────── */
-.uhdd-dropdown-item {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  padding: 10px 12px !important;
-  margin-bottom: 4px !important;
-  background: var(--uhdd-bg-card) !important;
-  border: 1px solid transparent !important;
-  border-radius: 8px !important;
-  cursor: pointer !important;
-  color: var(--uhdd-text-primary) !important;
-  text-align: left !important;
-  transition: all 0.2s ease !important;
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+  background: var(--bg-card);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-primary);
+  text-align: left;
+  transition: all 0.2s ease;
 }
-.uhdd-dropdown-item:last-child { margin-bottom: 0 !important; }
-.uhdd-dropdown-item:hover {
-  background: var(--uhdd-bg-hover) !important;
-  border-color: var(--uhdd-border) !important;
+.dropdown-item:last-child { margin-bottom: 0; }
+.dropdown-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
 }
-.uhdd-recommended {
-  border-left: 3px solid var(--uhdd-accent) !important;
+.recommended {
+  border-left: 3px solid var(--accent);
 }
 
 /* Item details */
-.uhdd-item-left {
-  display: flex !important;
-  align-items: center !important;
-  gap: 10px !important;
-  flex: 1 !important;
-  min-width: 0 !important;
+.item-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
 }
-.uhdd-item-icon {
-  font-size: 14px !important;
-  color: var(--uhdd-text-secondary) !important;
+.item-icon {
+  font-size: 14px;
+  color: var(--text-secondary);
 }
-.uhdd-item-details {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 2px !important;
-  overflow: hidden !important;
+.item-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
 }
-.uhdd-item-title {
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
+.item-title {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.uhdd-item-meta {
-  font-size: 11px !important;
-  color: var(--uhdd-text-secondary) !important;
+.item-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 /* ─── Badges ─────────────────────────────────────────────────────────────── */
-.uhdd-badge {
-  font-size: 10px !important;
-  font-weight: 700 !important;
-  padding: 2px 6px !important;
-  border-radius: 4px !important;
-  text-transform: uppercase !important;
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
 }
-.uhdd-badge-4k { background: rgba(234, 179, 8, 0.2) !important; color: #FBBF24 !important; border: 1px solid rgba(234, 179, 8, 0.3) !important; }
-.uhdd-badge-qhd { background: rgba(168, 85, 247, 0.2) !important; color: #C084FC !important; border: 1px solid rgba(168, 85, 247, 0.3) !important; }
-.uhdd-badge-hd, .uhdd-badge-hq { background: rgba(56, 189, 248, 0.2) !important; color: #7DD3FC !important; border: 1px solid rgba(56, 189, 248, 0.3) !important; }
+.badge-4k { background: rgba(234, 179, 8, 0.2); color: #FBBF24; border: 1px solid rgba(234, 179, 8, 0.3); }
+.badge-qhd { background: rgba(168, 85, 247, 0.2); color: #C084FC; border: 1px solid rgba(168, 85, 247, 0.3); }
+.badge-hd, .badge-hq { background: rgba(56, 189, 248, 0.2); color: #7DD3FC; border: 1px solid rgba(56, 189, 248, 0.3); }
 
 /* ─── States ─────────────────────────────────────────────────────────────── */
-.uhdd-state-container {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 24px 16px !important;
-  text-align: center !important;
-  color: var(--uhdd-text-primary) !important;
+.state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-primary);
 }
-.uhdd-spinner {
-  width: 24px !important;
-  height: 24px !important;
-  border: 3px solid rgba(255, 255, 255, 0.1) !important;
-  border-top-color: var(--uhdd-accent) !important;
-  border-radius: 50% !important;
-  animation: uhdd-spin 1s linear infinite !important;
-  margin-bottom: 12px !important;
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
 }
-.uhdd-success-icon {
-  width: 32px !important;
-  height: 32px !important;
-  background: var(--uhdd-success) !important;
-  border-radius: 50% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  margin-bottom: 12px !important;
-  color: white !important;
-  font-size: 16px !important;
+.success-icon {
+  width: 32px;
+  height: 32px;
+  background: var(--success);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  color: white;
+  font-size: 16px;
 }
-.uhdd-error-text {
-  color: var(--uhdd-error) !important;
-  font-size: 13px !important;
-  margin-top: 8px !important;
+.error-text {
+  color: var(--error);
+  font-size: 13px;
+  margin-top: 8px;
 }
-@keyframes uhdd-spin { to { transform: rotate(360deg); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+

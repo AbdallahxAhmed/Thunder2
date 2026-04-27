@@ -1,23 +1,23 @@
-# Implementation Plan: IDM-Style Floating Download Button (v4)
+# Implementation Plan: Shadow DOM Floating Download UI (v5)
 
 **Branch**: `003-mv3-browser-interceptor` | **Date**: 2026-04-27 | **Spec**: [spec.md](spec.md)
-**Input**: Feature specification v4 from `specs/002-mv3-browser-interceptor/spec.md` (User Story 5, FR-025 through FR-035)
+**Input**: Feature specification v5 from `specs/002-mv3-browser-interceptor/spec.md` (User Story 5, FR-026 through FR-035)
 
 ## Summary
 
-The IDM-Style Floating Download Button adds a content script (`content.js`) and companion stylesheet (`content.css`) that detect `<video>` elements on any page via MutationObserver, inject a floating download button over the video player, and render an inline dark-mode quality picker dropdown. The button communicates with the existing `background.js` service worker (which already pre-fetches format data) to retrieve quality options, and dispatches download requests to the daemon. The manifest is updated to register the new content script pair.
+The v5 update completely rewrites the content script (`content.js`) and its stylesheet (`content.css`) to use a Shadow DOM architecture. This is necessary to fix severe CSS corruption and Event hijacking on hostile sites (like Dailymotion). We are wiping the old MutationObserver and DOM-injection logic and starting fresh. The new script injects a single body-level host container, attaches a closed Shadow DOM, and renders a draggable floating button immune to host styling. Iframes are strictly ignored (`window !== window.top`).
 
 ## Technical Context
 
 **Language/Version**: JavaScript ES2020+ (content script), CSS3 (content styles)
-**Primary Dependencies**: Chrome Extensions API (MV3) — `chrome.runtime.sendMessage`, `MutationObserver`, DOM APIs
-**Storage**: None (stateless content script; format cache lives in background.js)
-**Testing**: Manual Chrome testing (extension)
+**Primary Dependencies**: Chrome Extensions API (MV3) — `chrome.runtime.sendMessage`, `chrome.storage.local`, Shadow DOM APIs
+**Storage**: `chrome.storage.local` to persist the dragged position of the button
+**Testing**: Manual Chrome testing on hostile sites (Dailymotion, YouTube)
 **Target Platform**: Chrome 102+ (extension)
-**Project Type**: Content script + injected UI overlay
-**Performance Goals**: Button appears within 1 second of `<video>` DOM insertion; dropdown renders within 500ms of click (using pre-cached data from background.js)
-**Constraints**: Must not interfere with page playback; must survive fullscreen transitions; must be idempotent across DOM mutations; CSS must not leak into host page
-**Scale/Scope**: Single browser instance, runs on all pages
+**Project Type**: Content script + Shadow DOM injected UI overlay
+**Performance Goals**: UI renders instantly on `document_idle`; zero performance impact from DOM scanning (no more MutationObserver)
+**Constraints**: Must completely isolate CSS via Shadow DOM; must ignore iframes to prevent spam; drag logic must not trigger clicks
+**Scale/Scope**: Single browser instance, runs on top-level frames only
 
 ## Constitution Check
 
@@ -137,52 +137,47 @@ if (message.type === "getFormats") {
 
 ---
 
-### 3. `extension/content.js` (NEW)
+### 3. `extension/content.js` (REWRITE)
 
-**What it is**: The core content script that detects `<video>` elements and injects the floating download UI.
+**What it is**: The core content script that injects the Shadow DOM and draggable floating UI.
 
-**Architecture** (following `floating_button_dom.md` skill rules):
+**Architecture** (following `shadow_dom_ui.md` skill rules):
 
-#### 3a. MutationObserver Setup
-- Observe `document.body` for `childList` and `subtree` mutations
-- On each mutation batch, scan for new `<video>` elements
-- Also run an initial scan on script load (for videos already in the DOM)
+#### 3a. Top-Level Enforcement
+- Check `if (window !== window.top) return;` immediately on load.
+- Prevents multiple buttons from rendering inside ads and embedded iframes.
 
-#### 3b. Video Detection & Button Injection (`processVideo(video)`)
-- Find the video's direct parent container (injection target)
-- Check for `data-uhdd-injected="true"` — skip if already injected (idempotency)
-- Ensure the container has `position: relative` (set it if not)
-- Create the floating button element (download icon)
-- Mark container with `data-uhdd-injected="true"`
-- Attach click handler to the button
+#### 3b. Shadow DOM Initialization
+- Create `<div id="uhdd-host"></div>`.
+- Apply `position: fixed !important; z-index: 2147483647 !important; pointer-events: none;` to the host.
+- Attach shadow root: `const shadow = host.attachShadow({ mode: 'closed' });`.
+- Inject `content.css` into the shadow root (either by fetching the URL or using a `<link>`).
+- Append host to `document.body`.
 
-#### 3c. Format Fetching (Button Click Handler)
-- Send `{type: "getFormats"}` via `chrome.runtime.sendMessage`
-- On success → call `renderDropdown(data, container)`
-- On error → show error state in dropdown
+#### 3c. Draggable Floating Button
+- Create the button inside the shadow root. Restore position from `chrome.storage.local`.
+- **Drag Logic**: Bind `mousedown`, `mousemove` (on document), `mouseup` (on document).
+- Use `pointer-events: auto` on the button itself.
+- Track `startX`, `startY` and calculate total movement delta.
+- If `delta < 5px`, treat as a **Click** and toggle the dropdown.
+- If `delta >= 5px`, treat as a **Drag**, update position, and save to `chrome.storage.local` on `mouseup`.
 
-#### 3d. Mini-Dropdown Rendering (`renderDropdown(data, container)`)
-- Create dropdown container with quality options (video formats only, sorted by resolution)
-- Each option shows: resolution badge, codec, filesize
-- Clicking an option → `dispatchDownload(url, format_id)`
-- Add click-outside listener to close the dropdown
+#### 3d. Format Fetching & Mini-Dropdown
+- On Click: Send `{type: "getFormats"}` via `chrome.runtime.sendMessage`.
+- Render a dropdown inside the shadow root with quality options.
+- Add click-outside listener (bound to the top document but checking composed paths) to close the dropdown.
 
-#### 3e. Download Dispatch (`dispatchDownload(url, format_id)`)
-- `POST` to `http://localhost:8000/api/download` with `{url, engine: "ytdlp", format_id}`
-- On success → show temporary success indicator (green checkmark, auto-fade after 2s)
-- On failure → show error state
+#### 3e. Download Dispatch
+- `POST` to `http://localhost:8000/api/download` with `{url: window.location.href, engine: "ytdlp", format_id}`
+- On success → show temporary success indicator.
 
-#### 3f. SPA Handling
-- Listen for URL changes via a cached `window.location.href` comparison
-- On URL change, reset dropdown state but keep the button (the video element is reused)
-
-**Estimated lines**: ~200 lines
+**Estimated lines**: ~250 lines
 
 ---
 
-### 4. `extension/content.css` (NEW)
+### 4. `extension/content.css` (REWRITE)
 
-**What it is**: Premium scoped CSS for the floating button and mini-dropdown.
+**What it is**: Premium CSS for the floating button and mini-dropdown, injected directly into the Shadow DOM.
 
 **Design System** (matching established dark theme from `popup.css` and `floating_button_dom.md`):
 ```css
@@ -200,19 +195,17 @@ if (message.type === "getFormats") {
 }
 ```
 
-**Key scoped styles** (all prefixed with `.uhdd-*` to avoid CSS collisions with host pages):
+**Key styles** (No longer need `.uhdd-` prefixes since we are in a Shadow DOM!):
 
-- **`.uhdd-floating-btn`** — `position: absolute; top: 10px; right: 10px; z-index: var(--uhdd-z-index)`. Small circular button (36×36px) with download arrow icon. `opacity: 0.7` → `1.0` on hover. Subtle `box-shadow` glow on hover. `transition: all 0.2s ease-in-out`.
-- **`.uhdd-dropdown`** — `position: absolute; top: 50px; right: 10px; z-index: var(--uhdd-z-index)`. Dark card (`--uhdd-bg-main`) with `border-radius: 12px`, `backdrop-filter: blur(8px)`, `max-height: 300px; overflow-y: auto`. Glassmorphism effect with semi-transparent background.
-- **`.uhdd-dropdown-item`** — Format row with hover highlight (`--uhdd-bg-card`). Shows resolution, codec badge, and filesize. `cursor: pointer`.
-- **`.uhdd-badge-*`** — Resolution badges (4K gold, QHD purple, HD blue, SD gray) matching `popup.css` badge styling.
-- **`.uhdd-success-indicator`** — Green checkmark with fade-out animation (`@keyframes uhdd-fade-out`).
-- **`.uhdd-error`** — Red error text state.
-- **Scrollbar** — Dark-themed, minimal width, matching popup.css.
+- **`.floating-btn`** — `position: absolute;` (relative to the viewport-sized host). Small circular button (48×48px) with download arrow icon. `opacity: 0.8` → `1.0` on hover. Subtle `box-shadow`. `cursor: grab;`. `pointer-events: auto;`.
+- **`.dropdown`** — Dark card (`var(--bg-main)`) with `border-radius: 12px`, `backdrop-filter: blur(8px)`, `max-height: 300px; overflow-y: auto`. Glassmorphism effect.
+- **`.dropdown-item`** — Format row with hover highlight.
+- **`.badge-*`** — Resolution badges (4K gold, QHD purple, HD blue, SD gray).
+- **`.success-indicator`** — Green checkmark with fade-out animation.
 
-**CSS Isolation**: All classes prefixed with `uhdd-` to prevent any collision with host page styles.
+**CSS Isolation**: Handled entirely by the Shadow DOM. No class prefixes needed.
 
-**Estimated lines**: ~180 lines
+**Estimated lines**: ~150 lines
 
 ---
 
@@ -222,12 +215,12 @@ if (message.type === "getFormats") {
 |------|--------|---------------------|------------|
 | `extension/manifest.json` | Modify | +8 lines | Trivial — add one content_scripts block |
 | `extension/background.js` | Modify | ~5 lines | Low — fallback for content script callers |
-| `extension/content.js` | Create | ~200 lines | Medium — MutationObserver, DOM injection, message passing, download dispatch |
-| `extension/content.css` | Create | ~180 lines | Medium — premium dark theme, glassmorphism, animations, CSS isolation |
+| `extension/content.js` | Rewrite | ~250 lines | High — Shadow DOM injection, drag-and-drop math, message passing |
+| `extension/content.css` | Rewrite | ~150 lines | Medium — premium dark theme, glassmorphism, animations |
 
-**Total estimated effort**: ~393 lines of code across 4 files (2 new + 2 modified).
+**Total estimated effort**: ~413 lines of code across 4 files.
 
-**Zero daemon changes** — the entire feature is browser-side. The existing `background.js` format cache and `POST /api/download` endpoint are reused as-is.
+**Zero daemon changes** — the entire feature is browser-side.
 
 ## Complexity Tracking
 
@@ -237,10 +230,8 @@ if (message.type === "getFormats") {
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| CSS leaks into host page | Visual corruption of websites | All classes prefixed with `uhdd-`; CSS custom properties namespaced with `--uhdd-` |
-| Host page CSS overrides floating button | Button invisible or mispositioned | Use `!important` on critical positioning rules; `z-index: 2147483640` |
-| MutationObserver performance on heavy DOM pages | Page slowdown | Observer callback uses `requestAnimationFrame` batching; only processes `<video>` elements |
-| Video parent container lacks `position: relative` | Button positioned wrong | Content script explicitly sets `position: relative` on the container if not already set |
-| YouTube's custom player structure | Button injected in wrong container | Target `.html5-video-player` parent specifically on YouTube; generic parent fallback for other sites |
-| SPA navigation doesn't trigger new content script | Stale format data shown | URL change detection via cached `location.href` comparison on MutationObserver callbacks |
-| Dropdown overlaps with native video controls | Poor UX | Button at `top: 10px, right: 10px`; dropdown opens downward, away from bottom controls |
+| Host page hijacks pointer events | Button unresponsive | Host element uses `z-index: 2147483647 !important`. `pointer-events: none` on host, `pointer-events: auto` on button. |
+| Iframe spam | Duplicate buttons | strict `if (window !== window.top) return;` at the top of `content.js` |
+| Dragging triggers a click | Annoying UX | Strict coordinate math: calculate `Math.hypot(dx, dy)`. If `< 5px`, it's a click. |
+| Content script cannot load `content.css` | Unstyled UI | Inject CSS using `chrome.runtime.getURL` and a `<link>` tag inside the Shadow DOM, or fetch and inject as `<style>`. |
+| Cross-origin click outside | Dropdown doesn't close | Event listener on top document checks `event.composedPath()` to see if the click originated inside the shadow root. |
