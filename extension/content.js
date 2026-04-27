@@ -48,6 +48,7 @@ function initializeSystem() {
     margin: 0 !important;
     padding: 0 !important;
   `;
+  host.style.pointerEvents = 'none';
   document.documentElement.appendChild(host);
 
   shadowRoot = host.attachShadow({ mode: 'open' });
