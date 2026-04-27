@@ -1,4 +1,4 @@
-# Tasks: IDM-Style Floating Download Button (v4)
+# Tasks: Ghost Overlay Tracking System (v6)
 
 **Input**: Design documents from `/specs/002-mv3-browser-interceptor/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories)
@@ -34,7 +34,7 @@
 
 ---
 
-## Phase 4: User Story 5 - IDM-Style Floating Download Button on Video Players (Priority: P2)
+## Phase 4: User Story 5 - The Ghost Overlay Tracking System (Priority: P2)
 
 **Goal**: Inject a floating download button directly over the video player on any website, providing instant access to quality selection and downloading without leaving the page.
 
@@ -42,16 +42,19 @@
 
 ### Implementation for User Story 5
 
-- [x] T007 [P] [US5] Add `content_scripts` block for `content.js` and `content.css` to `extension/manifest.json`.
-- [x] T008 [P] [US5] Update `getFormats` message handler in `extension/background.js` to fallback to `sender.tab.id` and `sender.tab.url`.
-- [x] T009 [P] [US5] Create `extension/content.css` with scoped dark-theme styles for floating button and dropdown (`--uhdd-*` prefixed).
-- [x] T010 [US5] Implement Ghost Overlay Tracking System with root-level injection, MutationObserver, and Anti-Jank scroll throttling in `extension/content.js`.
+- [ ] T007 [P] [US5] Add `content_scripts` block for `content.js` and `content.css` to `extension/manifest.json`.
+- [ ] T008 [P] [US5] Update `getFormats` message handler in `extension/background.js` to fallback to `sender.tab.id` and `sender.tab.url`.
+- [ ] T009 [P] [US5] Create `extension/content.css` with scoped dark-theme styles for floating button and dropdown (`--uhdd-*` prefixed).
+- [x] T010 [US5] Code Purge: Surgically remove ALL legacy code related to the floating button's position calculation, mouse events (mousedown, mousemove, mouseup), and chrome.storage.local coordination from `extension/content.js`.
+- [x] T011 [US5] Implement Ghost Overlay Tracking System with root-level injection to `document.documentElement` and absolute ghosting (`position: fixed`, `z-index: 2147483647`).
+- [x] T012 [US5] Implement Anchor & Track with Anti-Jank Observers (`ResizeObserver`, `IntersectionObserver`, window `scroll` events) synced via `window.requestAnimationFrame`.
+- [x] T013 [US5] Implement Dynamic DOM Resilience using `MutationObserver` to detect `<video>` replacement.
 
 ---
 
 ## Final Phase: Polish & Cross-Cutting Concerns
 
-- [x] T011 Run manual validation of the floating button on a test video site.
+- [ ] T014 Run manual validation of the floating button on a test video site.
 
 ---
 

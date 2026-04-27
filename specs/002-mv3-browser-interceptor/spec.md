@@ -45,10 +45,13 @@ While v5 isolated the UI, the draggable floating button required manual user int
 ### v6 Approach (Ghost Overlay Tracking System)
 The extension injects a content script (`content.js`) into pages:
 1. **Top-Level Enforcement**: The script strictly enforces `if (window !== window.top) return;` to prevent iframe spam.
-2. **Absolute Isolation**: It creates a single host element (`<div id="uhdd-host"></div>`) strictly at the `document.documentElement` root level and attaches a closed Shadow DOM.
-3. **CSS Protection**: The host container uses `position: fixed !important; z-index: 2147483647 !important; top: 0; left: 0; pointer-events: none;`. The internal UI uses `pointer-events: auto`.
-4. **Ghost Overlay Tracking**: Instead of dragging, the script uses a `ResizeObserver`, `IntersectionObserver`, and window `scroll` events on the target `<video>` element. It uses `getBoundingClientRect()` to continuously calculate the video's exact screen coordinates and transforms the Shadow DOM button to anchor it to the top-right corner of the video. This visually anchors the button while remaining completely decoupled from the DOM hierarchy.
-5. **Data Flow**: The button communicates via `chrome.runtime.sendMessage` to fetch data and dispatch downloads to the daemon, rendering an inline dark-mode dropdown.
+2. **Root-Level Injection & Absolute Isolation**: It creates a single host element (`<div id="uhdd-host"></div>`) strictly at the `document.documentElement` root level (NOT `document.body`) and attaches a closed Shadow DOM.
+3. **Absolute Ghosting**: The host container uses `position: fixed !important; z-index: 2147483647 !important; top: 0; left: 0; pointer-events: none;`. The internal UI uses `pointer-events: auto`.
+4. **Anchor & Track**: It uses `getBoundingClientRect()` on the active `<video>` element to calculate its exact screen coordinates and anchors the UI to the top-right corner.
+5. **Anti-Jank Observers & Performance Mandate**: It tracks video position using `ResizeObserver`, `IntersectionObserver`, and window `scroll` events. ALL coordinate recalculations MUST be synced with the browser's paint cycle using `window.requestAnimationFrame` to forbid synchronous DOM thrashing.
+6. **Dynamic DOM Resilience**: It uses a `MutationObserver` to detect if the target `<video>` element is destroyed and recreated (e.g., YouTube ad breaks), automatically re-attaching the tracking logic to the new player without memory leaks.
+7. **Legacy Ban & Code Purge Mandate**: NO manual drag-and-drop mechanics. NO Euclidean distance (`Math.hypot`) logic. NO `chrome.storage.local` saving/loading of coordinates. All legacy UI positioning code MUST be surgically removed before rebuilding.
+8. **Data Flow**: The button communicates via `chrome.runtime.sendMessage` to fetch data and dispatch downloads to the daemon, rendering an inline dark-mode dropdown.
 
 
 ## User Scenarios & Testing

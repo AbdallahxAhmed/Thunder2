@@ -1,4 +1,4 @@
-# Implementation Plan: Shadow DOM Floating Download UI (v5)
+# Implementation Plan: Ghost Overlay Tracking System (v6)
 
 **Branch**: `003-mv3-browser-interceptor` | **Date**: 2026-04-27 | **Spec**: [spec.md](spec.md)
 **Input**: Feature specification v5 from `specs/002-mv3-browser-interceptor/spec.md` (User Story 5, FR-026 through FR-035)
@@ -11,7 +11,7 @@ The v6 update completely rewrites the content script (`content.js`) and its styl
 
 **Language/Version**: JavaScript ES2020+ (content script), CSS3 (content styles)
 **Primary Dependencies**: Chrome Extensions API (MV3) — `chrome.runtime.sendMessage`, `chrome.storage.local`, Shadow DOM APIs
-**Storage**: `chrome.storage.local` to persist the dragged position of the button
+**Storage**: `chrome.storage.local` is strictly banned for coordinate tracking (Legacy Ban).
 **Testing**: Manual Chrome testing on hostile sites (Dailymotion, YouTube)
 **Target Platform**: Chrome 102+ (extension)
 **Project Type**: Content script + Shadow DOM injected UI overlay
@@ -155,13 +155,14 @@ if (message.type === "getFormats") {
 - Append host strictly to `document.documentElement`.
 
 #### 3c. Ghost Overlay Tracking System
-- Completely remove all legacy drag-and-drop logic (`mousedown`, `mousemove`, `mouseup`) and Euclidean math (`Math.hypot`).
+- **Code Purge Mandate**: Surgically remove all legacy code related to the floating button's position calculation, mouse events (`mousedown`, `mousemove`, `mouseup`), and `chrome.storage.local` coordination.
+- **Legacy Ban**: NO Euclidean math (`Math.hypot`).
 - Create `trackVideo(videoElement)` function:
-  - Uses `getBoundingClientRect()` on the video to calculate precise coordinates.
+  - **Anchor & Track**: Uses `getBoundingClientRect()` on the video to calculate precise coordinates.
   - Applies coordinates to the button via CSS `transform` or `top`/`left`.
-  - Sets up a `ResizeObserver` on the video to automatically call `updatePosition()`.
-  - Sets up an `IntersectionObserver` on the video to hide the button when the video is out of view.
-  - Attaches a window `scroll` event listener with `capture: true` to constantly sync the overlay position during fast scrolling.
+  - **Anti-Jank Observers**: Sets up a `ResizeObserver` on the video, `IntersectionObserver` to hide when out of view, and a window `scroll` event listener (`capture: true`).
+  - **Performance Mandate**: ALL coordinate recalculations must be synced using `window.requestAnimationFrame`. Synchronous DOM thrashing is strictly forbidden.
+  - **Dynamic DOM Resilience**: Implements a `MutationObserver` to detect if the target `<video>` element is destroyed/recreated and re-attaches tracking logic automatically.
 
 #### 3d. Format Fetching & Mini-Dropdown
 - On Click: Send `{type: "getFormats"}` via `chrome.runtime.sendMessage`.
