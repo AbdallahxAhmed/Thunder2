@@ -17,6 +17,7 @@ function getBuffer(tabId) {
       pssh: null,
       licenseUrl: null,
       licenseHeaders: {},
+      title: null,
       dispatchedUrls: new Set(),
     });
   }
@@ -45,6 +46,11 @@ async function dispatchToUHDD(tabId) {
     payload.pssh = buffer.pssh;
     payload.license_url = buffer.licenseUrl;
     payload.license_headers = buffer.licenseHeaders || {};
+  }
+
+  // Include page title for clean filenames
+  if (buffer.title) {
+    payload.title = buffer.title;
   }
 
   buffer.dispatchedUrls.add(url);
@@ -92,6 +98,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     // Non-DRM .m3u8 — dispatch immediately
     console.log(`${LOG} [tab ${tabId}] m3u8 manifest: ${message.url}`);
     buffer.manifestUrl = message.url;
+    if (message.title) buffer.title = message.title;
     dispatchToUHDD(tabId);
 
   } else if (message.type === "drm_package") {
@@ -101,6 +108,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
     buffer.pssh = message.pssh;
     buffer.licenseUrl = message.licenseUrl;
     buffer.licenseHeaders = message.licenseHeaders || {};
+    if (message.title) buffer.title = message.title;
     dispatchToUHDD(tabId);
   }
 });

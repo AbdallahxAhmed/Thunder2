@@ -47,6 +47,9 @@ class DownloadRequest(BaseModel):
     license_headers: Optional[dict[str, Any]] = Field(
         default=None, description="HTTP headers for the license server request"
     )
+    title: Optional[str] = Field(
+        default=None, description="Page title for human-readable filenames"
+    )
 
     @field_validator("url")
     @classmethod

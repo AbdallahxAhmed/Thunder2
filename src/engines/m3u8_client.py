@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import subprocess
 from typing import Any
 
@@ -27,9 +28,24 @@ class M3u8Client:
     def __init__(self, download_dir: str | None = None) -> None:
         self.download_dir = download_dir or settings.download_dir
 
-    def _generate_save_name(self, url: str) -> str:
-        """Generate a filesystem-safe name from the URL."""
-        # Use a short hash of the URL as the filename to avoid special chars
+    def _sanitize_filename(self, name: str) -> str:
+        """Strip invalid filesystem characters and truncate to safe length."""
+        # Remove characters invalid on Windows/Linux/macOS
+        clean = re.sub(r'[/\\:*?"<>|]', '', name)
+        # Collapse whitespace
+        clean = re.sub(r'\s+', ' ', clean).strip()
+        # Truncate to 200 chars (excluding extension) per spec
+        if len(clean) > 200:
+            clean = clean[:200].strip()
+        return clean
+
+    def _generate_save_name(self, url: str, title: str | None = None) -> str:
+        """Generate a filesystem-safe name from the title or URL."""
+        if title:
+            sanitized = self._sanitize_filename(title)
+            if sanitized:
+                return sanitized
+        # Fallback: short hash of the URL
         url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
         return f"drm_{url_hash}"
 
@@ -87,7 +103,7 @@ class M3u8Client:
         3. Execute subprocess and capture output
         """
         save_dir = os.path.abspath(self.download_dir)
-        save_name = self._generate_save_name(request.url)
+        save_name = self._generate_save_name(request.url, request.title)
 
         # ── Step 1: Resolve keys ──────────────────────────────────────
         try:
@@ -112,6 +128,7 @@ class M3u8Client:
             "--save-name", save_name,
             "--auto-select",
             "--del-after-done",
+            "-M", "format=mp4",  # Force mux audio+video into a single .mp4
         ]
 
         # Add --key for each resolved key pair

@@ -51,6 +51,21 @@
     return LICENSE_URL_PATTERNS.some((p) => lower.includes(p));
   }
 
+  function sanitizeTitle(raw) {
+    if (!raw || typeof raw !== "string") return null;
+    // Strip invalid filename chars: / \ : * ? " < > |
+    let clean = raw.replace(/[/\\:*?"<>|]/g, "").trim();
+    // Collapse multiple spaces/underscores
+    clean = clean.replace(/\s+/g, " ");
+    // Truncate to 200 chars to stay filesystem-safe
+    if (clean.length > 200) clean = clean.substring(0, 200).trim();
+    return clean || null;
+  }
+
+  function getPageTitle() {
+    try { return sanitizeTitle(document.title); } catch (_) { return null; }
+  }
+
   function extractHeaders(headersSource) {
     // Extracts ALL headers from a fetch init or XHR, ensuring priority headers
     // are always included when present.
@@ -83,7 +98,10 @@
         (h) => Object.keys(capturedLicenseHeaders).some((k) => k.toLowerCase() === h)
       );
 
+      const title = getPageTitle();
+
       console.log(`${LOG} ✅ Full DRM package ready!`);
+      console.log(`${LOG}   Title:   ${title}`);
       console.log(`${LOG}   MPD:     ${capturedManifestUrl}`);
       console.log(`${LOG}   PSSH:    ${capturedPSSH.substring(0, 40)}…`);
       console.log(`${LOG}   License: ${capturedLicenseUrl}`);
@@ -96,6 +114,7 @@
           pssh: capturedPSSH,
           licenseUrl: capturedLicenseUrl,
           licenseHeaders: capturedLicenseHeaders,
+          title: title,
         },
       }));
     }
@@ -141,7 +160,7 @@
 
       if (url.includes(".m3u8")) {
         window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
-          detail: { type: "manifest", url: url },
+          detail: { type: "manifest", url: url, title: getPageTitle() },
         }));
       } else {
         syncWithDaemon();
