@@ -210,7 +210,6 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
 }
 
 .quality-label {
@@ -218,24 +217,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
-  flex-wrap: nowrap;
-}
-
-.quality-label-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .format-details {
   font-size: 11px;
   color: var(--text-secondary);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ─── Quality Badge Pills ─────────────────────────────────────────── */
@@ -249,7 +235,6 @@
   font-weight: 700;
   letter-spacing: 0.5px;
   line-height: 1;
-  flex-shrink: 0;
 }
 
 .badge-hd {
