@@ -267,23 +267,32 @@ If `engine` is explicitly provided, it overrides routing.
 
 ## Development Progress
 ### Backend (UHDD Daemon)
-- ✅ Core API implemented: `/api/download`, `/api/download/{id}`, `/api/health`, `/api/info`
-- ✅ Engine integrations: aria2, yt-dlp, N_m3u8DL-RE + Widevine CDM negotiation
-- ✅ Routing, job manager, structured logging, and config handling in place
-- ⏳ Spec tasks still open: full pytest + coverage run (T039) and quickstart validation (T040)
+- ✅ FastAPI app with lifespan startup (logging, runtime dirs, engine registration, initial health check)
+- ✅ Core endpoints: `/api/download`, `/api/download/{id}`, `/api/info`, `/api/health` + structured error responses
+- ✅ Deterministic routing: DRM keys or `.mpd` → `m3u8`, known media domains or `.m3u8` → `ytdlp`, default → `aria2`
+- ✅ Engine integrations: aria2 JSON-RPC polling, yt-dlp module, N_m3u8DL-RE + Widevine CDM negotiation
+- ✅ JSON logging with redaction + `X-Request-ID` correlation IDs
+- ⏳ Spec tasks still open in `specs/001-uhdd-download-daemon/tasks.md`: T039 (full pytest + coverage), T040 (quickstart validation)
 
 ### Extension (MV3)
-- ✅ DRM interception pipeline + license proxy dispatch
-- ✅ Native download hijacking → aria2
-- ✅ Quality Picker popup (format discovery + dispatch)
-- ✅ Floating UI (hybrid menu + background proxy + drag handling)
+- ✅ DRM interception pipeline + license proxy buffering (EME/PSSH + license headers) with explicit user-triggered dispatch
+- ✅ Native download hijacking → aria2 with anti-loop guard and metadata forwarding
+- ✅ Quality Picker popup (format discovery via `/api/info` + dispatch)
+- ✅ Floating UI (hybrid RAW + parsed formats menu, draggable overlay, background proxy)
+- ⚠️ Prefetch hooks exist but are commented out in `extension/background.js`
+- ⚠️ Task list drift in `specs/002-mv3-browser-interceptor/tasks.md`: T007/T008/T009/T014 are unchecked despite corresponding code being present (manual validation still pending)
 
-### Current Problems (from specs)
-- ⚠️ Floating UI specs conflict: MV3 v6 "Ghost Overlay Tracking" requires anchored, non-draggable UI + top-frame enforcement, while the active hybrid UI is draggable and runs in all frames.
-- ⚠️ Spec status drift: multiple specs still marked "Draft" even though corresponding features are implemented.
-- ⚠️ Task checklists are out of sync (some MV3 tasks still unchecked despite code presence).
+### Spec Alignment Notes
+- Floating UI currently runs in all frames and is draggable (`manifest.json` sets `all_frames: true`, `content.js` enables drag). Confirm if the spec expects a top-frame, anchored UI.
 
 ## Development
+### Step-by-step local dev
+1. Install dev dependencies: `pip install -r requirements-dev.txt`
+2. Start aria2 RPC (see Quick Start step 3)
+3. Start the daemon with reload (see Backend section below)
+4. Load/reload the extension (see Extension section below)
+5. Run tests (see Tests section below)
+
 ### Install dev dependencies
 ```bash
 pip install -r requirements-dev.txt
