@@ -279,11 +279,11 @@ If `engine` is explicitly provided, it overrides routing.
 - ✅ Native download hijacking → aria2 with anti-loop guard and metadata forwarding
 - ✅ Quality Picker popup (format discovery via `/api/info` + dispatch)
 - ✅ Floating UI (hybrid RAW + parsed formats menu, draggable overlay, background proxy)
-- ⚠️ Prefetch hooks exist but are commented out in `extension/background.js`
-- ⚠️ Task list drift in `specs/002-mv3-browser-interceptor/tasks.md`: T007/T008/T009/T014 are unchecked despite corresponding code being present (manual validation still pending)
+- ⚠️ Format prefetch exists but is not wired: `prefetchFormats()` is implemented yet its triggers in `tabs.onUpdated` and `tabs.onActivated` are commented out.
 
-### Spec Alignment Notes
-- Floating UI currently runs in all frames and is draggable (`manifest.json` sets `all_frames: true`, `content.js` enables drag). Confirm if the spec expects a top-frame, anchored UI.
+### Current Problems / Open Items
+- Floating UI needs IDM-like auto-placement: anchor to the detected `<video>` element and track it on resize/scroll, while still allowing manual drag. Current behavior starts top-right and relies on user drag.
+- Spec status drift: several spec docs are still marked Draft or have unchecked tasks despite matching code being present (e.g., MV3 tasks T007/T008/T009/T014). Align spec status + checklists to actual implementation.
 
 ## Development
 ### Step-by-step local dev
