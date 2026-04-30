@@ -163,7 +163,7 @@ A user navigates to any website playing a video. The extension automatically inj
 - **FR-001**: Extension MUST be built as a Chrome Manifest V3 extension with a service worker.
 - **FR-002**: Extension MUST inject a content script into the `"MAIN"` world to access the page's JavaScript execution context for EME hooking and network interception.
 - **FR-003**: Extension MUST override `window.fetch` and `XMLHttpRequest` to intercept network requests containing `.mpd` or `.m3u8` URLs (manifest capture).
-- **FR-004**: Extension MUST intercept the license server request by detecting `fetch`/`XHR` calls that carry binary CDM challenge payloads, capturing the request URL, method, and headers.
+- **FR-004**: Extension MUST intercept the license server request by detecting `fetch`/`XHR` calls (including `Request` objects) that carry binary CDM challenge payloads, capturing the request URL, method, and headers.
 - **FR-005**: Extension MUST hook `MediaKeySession.prototype.generateRequest` to extract the raw PSSH/initData and encode it as base64.
 - **FR-006**: Extension MUST use a bridge content script running in the isolated world to forward captured data from the MAIN world to the service worker via `chrome.runtime.sendMessage`.
 - **FR-007**: Extension MUST send captured payloads to `http://localhost:8000/api/download` as a JSON POST request with the format `{"url": "<manifest_url>", "pssh": "<base64>", "license_url": "<url>", "license_headers": {}}`.

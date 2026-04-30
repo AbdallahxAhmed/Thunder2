@@ -151,7 +151,14 @@
 
   const originalFetch = window.fetch;
   window.fetch = async function (input, init) {
-    const url = typeof input === "string" ? input : input && input.url ? input.url : "";
+    const request = input instanceof Request ? input : null;
+    const url = typeof input === "string"
+      ? input
+      : request
+        ? request.url
+        : input && input.url
+          ? input.url
+          : "";
 
     // Capture .mpd / .m3u8 manifest URLs
     if (url.includes(".mpd") || url.includes(".m3u8")) {
@@ -168,15 +175,33 @@
     }
 
     // Detect license server requests
-    if (init) {
-      let bodyBytes = init.body || null;
+    let bodyBytes = null;
+    let mergedHeaders = null;
+
+    if (init && init.body) {
+      bodyBytes = init.body;
       if (bodyBytes instanceof Blob) {
         try { bodyBytes = await bodyBytes.arrayBuffer(); } catch (_) {}
       }
-      handlePotentialLicenseRequest(url, init.headers, bodyBytes);
-    } else if (isKnownLicenseUrl(url)) {
-      // GET-based license URL (rare but possible) — no body to check
-      handlePotentialLicenseRequest(url, null, null);
+    } else if (request && request.method?.toUpperCase() !== "GET") {
+      try {
+        bodyBytes = await request.clone().arrayBuffer();
+      } catch (_) {}
+    }
+
+    const headerSources = [];
+    if (request?.headers) headerSources.push(request.headers);
+    if (init?.headers) headerSources.push(init.headers);
+    if (headerSources.length) {
+      const combined = {};
+      headerSources.forEach((src) => Object.assign(combined, extractHeaders(src)));
+      if (Object.keys(combined).length > 0) {
+        mergedHeaders = combined;
+      }
+    }
+
+    if (bodyBytes || mergedHeaders || isKnownLicenseUrl(url)) {
+      handlePotentialLicenseRequest(url, mergedHeaders, bodyBytes);
     }
 
     return originalFetch.apply(this, arguments);

@@ -227,7 +227,7 @@ If `engine` is explicitly provided, it overrides routing.
 
 ## Extension Workflows
 ### DRM License Proxy
-1. `eme_hook.js` captures PSSH (EME), manifest URL, and license requests.
+1. `eme_hook.js` captures PSSH (EME), manifest URL, and license requests (fetch/XHR, including `Request` objects).
 2. `bridge.js` forwards captured data to the service worker.
 3. `background.js` stores the DRM package until the user triggers a RAW download.
 4. Daemon negotiates keys via `pywidevine` and invokes `N_m3u8DL-RE`.
