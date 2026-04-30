@@ -14,6 +14,7 @@ Unified Headless Download Daemon + MV3 Chrome Extension that intercepts browser 
 - [Extension Workflows](#extension-workflows)
 - [Logging](#logging)
 - [Troubleshooting](#troubleshooting)
+- [Development Progress](#development-progress)
 - [Development](#development)
 - [Responsible Use](#responsible-use)
 
@@ -263,6 +264,24 @@ If `engine` is explicitly provided, it overrides routing.
 | DRM download fails | Missing/invalid `.wvd` or license headers | Set `WVD_PATH`, verify captured headers |
 | Popup shows "Backend offline" | Daemon not running | Start `uvicorn src.main:app` |
 | Cookies missing in hijacked downloads | Cookie access denied | Downloads still proceed without cookies |
+
+## Development Progress
+### Backend (UHDD Daemon)
+- ✅ Core API implemented: `/api/download`, `/api/download/{id}`, `/api/health`, `/api/info`
+- ✅ Engine integrations: aria2, yt-dlp, N_m3u8DL-RE + Widevine CDM negotiation
+- ✅ Routing, job manager, structured logging, and config handling in place
+- ⏳ Spec tasks still open: full pytest + coverage run (T039) and quickstart validation (T040)
+
+### Extension (MV3)
+- ✅ DRM interception pipeline + license proxy dispatch
+- ✅ Native download hijacking → aria2
+- ✅ Quality Picker popup (format discovery + dispatch)
+- ✅ Floating UI (hybrid menu + background proxy + drag handling)
+
+### Current Problems (from specs)
+- ⚠️ Floating UI specs conflict: MV3 v6 "Ghost Overlay Tracking" requires anchored, non-draggable UI + top-frame enforcement, while the active hybrid UI is draggable and runs in all frames.
+- ⚠️ Spec status drift: multiple specs still marked "Draft" even though corresponding features are implemented.
+- ⚠️ Task checklists are out of sync (some MV3 tasks still unchecked despite code presence).
 
 ## Development
 ### Install dev dependencies
