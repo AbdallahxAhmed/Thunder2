@@ -186,7 +186,7 @@
         try { bodyBytes = await bodyBytes.arrayBuffer(); } catch (_) {}
       }
     } else if (request) {
-      const requestMethod = request.method.toUpperCase();
+      const requestMethod = request.method;
       if (requestMethod !== "GET" && requestMethod !== "HEAD") {
         try {
           bodyBytes = await request.clone().arrayBuffer();

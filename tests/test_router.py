@@ -18,7 +18,7 @@ class TestClassifyRouting:
         """drm_keys must override even YouTube URLs."""
         assert classify("https://www.youtube.com/watch?v=x", drm_keys="abc:def") == "m3u8"
 
-    # Rule 2: pssh + license_url → m3u8
+    # Rule 2: pssh + license_url → m3u8 (CDM negotiation)
     def test_pssh_license_routes_to_m3u8(self):
         assert (
             classify(
