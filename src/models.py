@@ -47,6 +47,10 @@ class DownloadRequest(BaseModel):
     license_headers: Optional[dict[str, Any]] = Field(
         default=None, description="HTTP headers for the license server request"
     )
+    drm_hint: Optional[bool] = Field(
+        default=None,
+        description="Hint that a DRM manifest/license was detected (routes to m3u8)",
+    )
     title: Optional[str] = Field(
         default=None, description="Page title for human-readable filenames"
     )
@@ -199,6 +203,13 @@ class InfoResponse(BaseModel):
     """Response for GET /api/info."""
 
     url: str
+    status: Optional[str] = Field(
+        default=None, description="Optional status (e.g. 'ok', 'unsupported')"
+    )
+    suggested_engine: Optional[str] = Field(
+        default=None, description="Engine hint when yt-dlp is unsupported"
+    )
+    reason: Optional[str] = Field(default=None, description="Optional status details")
     title: Optional[str] = None
     thumbnail: Optional[str] = None
     duration: Optional[float] = None

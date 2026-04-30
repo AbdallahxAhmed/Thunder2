@@ -121,6 +121,7 @@ Accepts a download request and dispatches to the correct engine.
   "pssh": "BASE64_PSSH",
   "license_url": "https://license.example.com",
   "license_headers": { "Authorization": "Bearer ..." },
+  "drm_hint": true,
   "title": "Optional title",
   "referer": "https://origin.example.com",
   "engine": "aria2 | ytdlp | m3u8",
@@ -156,6 +157,9 @@ Returns status for a download job.
 ### `GET /api/info?url=...`
 Returns a curated list of quality tiers for popup/floating UI.
 
+Optional query params:
+- `drm_hint=true` to indicate a DRM/manifest signal was detected client-side. When yt-dlp fails, the response will include `suggested_engine: "m3u8"` for UI fallback.
+
 **Response**
 ```json
 {
@@ -164,6 +168,9 @@ Returns a curated list of quality tiers for popup/floating UI.
   "thumbnail": "https://...",
   "duration": 1234,
   "max_height": 1080,
+  "status": "ok",
+  "suggested_engine": null,
+  "reason": null,
   "options": [
     { "label": "Best Quality (1080p)", "format_id": "bestvideo+bestaudio/best", "type": "video", "badge": "HD" },
     { "label": "720p", "format_id": "bestvideo[height<=720]+bestaudio/best", "type": "video", "badge": "HD" },
@@ -202,10 +209,11 @@ All errors are structured:
 Requests are routed in priority order:
 1. `drm_keys` present → **m3u8**
 2. `pssh` + `license_url` present → **m3u8**
-3. URL ends with `.mpd` → **m3u8**
-4. Domain is known media site → **ytdlp**
-5. URL ends with `.m3u8` → **ytdlp**
-6. Everything else → **aria2**
+3. `drm_hint` present → **m3u8**
+4. URL ends with `.mpd` → **m3u8**
+5. Domain is known media site → **ytdlp**
+6. URL ends with `.m3u8` → **ytdlp**
+7. Everything else → **aria2**
 
 If `engine` is explicitly provided, it overrides routing.
 

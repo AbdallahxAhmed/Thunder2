@@ -216,6 +216,7 @@ async def submit_download(request: DownloadRequest) -> JSONResponse:
             drm_keys=request.drm_keys,
             pssh=request.pssh,
             license_url=request.license_url,
+            drm_hint=request.drm_hint,
         )
 
     # Check engine availability
@@ -277,7 +278,12 @@ async def get_download_status(job_id: str) -> JSONResponse:
 
 
 @app.get("/api/info", response_model=InfoResponse)
-async def get_media_info(url: str = Query(..., min_length=1)) -> JSONResponse:
+async def get_media_info(
+    url: str = Query(..., min_length=1),
+    drm_hint: bool = Query(
+        default=False, description="Hint that DRM/manifest signals were detected"
+    ),
+) -> JSONResponse:
     """Query available formats for a media URL via yt-dlp.
 
     Returns a curated, quality-obsessed list of resolution tiers.
@@ -298,6 +304,15 @@ async def get_media_info(url: str = Query(..., min_length=1)) -> JSONResponse:
     try:
         info = await asyncio.to_thread(engine.extract_info, url)
     except yt_dlp.utils.DownloadError as exc:
+        if drm_hint:
+            resp = InfoResponse(
+                url=url,
+                status="unsupported",
+                suggested_engine="m3u8",
+                reason="yt-dlp could not extract info; DRM/manifest hint provided",
+                options=[],
+            )
+            return JSONResponse(content=resp.model_dump(mode="json"))
         return JSONResponse(
             status_code=422,
             content=ErrorResponse(
@@ -405,6 +420,7 @@ async def get_media_info(url: str = Query(..., min_length=1)) -> JSONResponse:
 
     resp = InfoResponse(
         url=url,
+        status="ok",
         title=info.get("title"),
         thumbnail=info.get("thumbnail"),
         duration=info.get("duration"),

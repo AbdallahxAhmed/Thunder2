@@ -8,7 +8,7 @@ from src.router import classify
 
 
 class TestClassifyRouting:
-    """Verify deterministic 5-rule routing logic."""
+    """Verify deterministic routing logic."""
 
     # Rule 1: drm_keys present → m3u8
     def test_drm_keys_routes_to_m3u8(self):
@@ -39,14 +39,27 @@ class TestClassifyRouting:
             == "m3u8"
         )
 
-    # Rule 3: .mpd URL → m3u8
+    # Rule 3: drm_hint → m3u8
+    def test_drm_hint_routes_to_m3u8(self):
+        assert classify("https://cdn.example.com/live/stream.m3u8", drm_hint=True) == "m3u8"
+
+    def test_drm_hint_overrides_media_domain(self):
+        assert (
+            classify(
+                "https://www.youtube.com/watch?v=x",
+                drm_hint=True,
+            )
+            == "m3u8"
+        )
+
+    # Rule 4: .mpd URL → m3u8
     def test_mpd_url_routes_to_m3u8(self):
         assert classify("https://cdn.example.com/stream.mpd") == "m3u8"
 
     def test_mpd_url_case_insensitive(self):
         assert classify("https://cdn.example.com/stream.MPD") == "m3u8"
 
-    # Rule 4: known media sites → ytdlp
+    # Rule 5: known media sites → ytdlp
     def test_youtube_routes_to_ytdlp(self):
         assert classify("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "ytdlp"
 
@@ -71,11 +84,11 @@ class TestClassifyRouting:
     def test_twitch_routes_to_ytdlp(self):
         assert classify("https://www.twitch.tv/clips/something") == "ytdlp"
 
-    # Rule 5: .m3u8 URL (no drm_keys) → ytdlp
+    # Rule 6: .m3u8 URL (no drm_keys) → ytdlp
     def test_m3u8_url_routes_to_ytdlp(self):
         assert classify("https://cdn.example.com/live/stream.m3u8") == "ytdlp"
 
-    # Rule 6: everything else → aria2
+    # Rule 7: everything else → aria2
     def test_zip_routes_to_aria2(self):
         assert classify("https://example.com/archive.zip") == "aria2"
 
