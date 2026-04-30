@@ -37,6 +37,15 @@ function getBuffer(tabId) {
 // status: "ready" | "fetching" | "error"
 
 const formatCache = new Map();
+const CACHE_TTL_MS = 300_000;
+
+function isCacheMatch(entry, url, drmHint) {
+  return entry && entry.url === url && entry.drmHint === drmHint;
+}
+
+function isCacheFresh(entry) {
+  return entry && entry.status === "ready" && (Date.now() - entry.ts) < CACHE_TTL_MS;
+}
 
 // Domains eligible for pre-fetching (mirrors router.py KNOWN_MEDIA_DOMAINS)
 const PREFETCH_DOMAINS = new Set([
@@ -58,11 +67,10 @@ const PREFETCH_DOMAINS = new Set([
 async function prefetchFormats(tabId, url, drmHint = false) {
   // Don't re-fetch if we already have a fresh entry for this URL
   const existing = formatCache.get(tabId);
-  if (existing && existing.url === url && existing.drmHint === drmHint && existing.status === "fetching") {
+  if (isCacheMatch(existing, url, drmHint) && existing.status === "fetching") {
     return; // another fetch is already in flight
   }
-  if (existing && existing.url === url && existing.drmHint === drmHint && existing.status === "ready" &&
-      (Date.now() - existing.ts) < 300_000) {
+  if (isCacheMatch(existing, url, drmHint) && isCacheFresh(existing)) {
     return; // still fresh
   }
 
@@ -282,15 +290,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     // ── Cache HIT (ready + same URL + fresh) ─────────────────────────
-    if (cached && cached.url === url && cached.drmHint === drmHint && cached.status === "ready" &&
-        (Date.now() - cached.ts) < 300_000) {
+    if (isCacheMatch(cached, url, drmHint) && isCacheFresh(cached)) {
       console.log(`${LOG} Format cache HIT for tab ${tabId}`);
       sendHybridResponse(cached.data, true);
       return true;
     }
 
     // ── Cache is currently fetching — poll at 100ms for fast resolution ─
-    if (cached && cached.url === url && cached.drmHint === drmHint && cached.status === "fetching") {
+    if (isCacheMatch(cached, url, drmHint) && cached.status === "fetching") {
       console.log(`${LOG} Format cache PENDING for tab ${tabId}, waiting…`);
       let waited = 0;
       const poll = setInterval(() => {

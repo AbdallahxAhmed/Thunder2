@@ -4,13 +4,18 @@
   // ─── Known License Server Patterns ────────────────────────────────────
   // Add URL substrings or hostnames that identify Widevine license endpoints.
   // Detection fires on EITHER a URL match OR a binary CDM challenge signature.
+  // Domain-specific DRM hints (e.g., Al Jazeera streams).
+  const DOMAIN_DRM_PATTERNS = [
+    "aljazeera",
+  ];
+
   const DRM_HINT_PATTERNS = [
     "widevine",
     "/license",
     "/licence",
     "drm",
-    "aljazeera",
     "cenc",
+    ...DOMAIN_DRM_PATTERNS,
   ];
 
   const LICENSE_URL_PATTERNS = [
