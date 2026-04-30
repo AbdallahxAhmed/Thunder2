@@ -4,14 +4,19 @@
   // ─── Known License Server Patterns ────────────────────────────────────
   // Add URL substrings or hostnames that identify Widevine license endpoints.
   // Detection fires on EITHER a URL match OR a binary CDM challenge signature.
-  const LICENSE_URL_PATTERNS = [
-    "shield-drm.imggaming.com",
-    "/api/v2/license",
+  const DRM_HINT_PATTERNS = [
     "widevine",
     "/license",
     "/licence",
     "drm",
     "aljazeera",
+    "cenc",
+  ];
+
+  const LICENSE_URL_PATTERNS = [
+    "shield-drm.imggaming.com",
+    "/api/v2/license",
+    ...DRM_HINT_PATTERNS,
   ];
 
   // Headers we MUST capture from the license request (case-insensitive match)
@@ -61,12 +66,7 @@
   function isLikelyDrmManifestUrl(url) {
     if (!url) return false;
     const lower = url.toLowerCase();
-    return (
-      lower.includes("widevine") ||
-      lower.includes("drm") ||
-      lower.includes("cenc") ||
-      lower.includes("license")
-    );
+    return DRM_HINT_PATTERNS.some((p) => lower.includes(p));
   }
 
   function sanitizeTitle(raw) {
@@ -147,7 +147,7 @@
     }
   }
 
-  function dispatchDrmHintUpdate() {
+  function dispatchDrmHintIfNeeded() {
     if (!capturedManifestUrl || dispatched || drmHintDispatched) return;
     drmHintDispatched = true;
     window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
@@ -174,7 +174,7 @@
       capturedLicenseUrl = url;
       capturedLicenseHeaders = extractHeaders(headers);
       drmDetected = true;
-      dispatchDrmHintUpdate();
+      dispatchDrmHintIfNeeded();
 
       const reason = urlMatch && bodyMatch ? "URL + challenge"
                    : urlMatch             ? "URL pattern"
@@ -300,7 +300,7 @@
     const psshBase64 = arrayBufferToBase64(initData);
     capturedPSSH = psshBase64;
     drmDetected = true;
-    dispatchDrmHintUpdate();
+    dispatchDrmHintIfNeeded();
     console.log(`${LOG} 🛡️ PSSH captured (${initData.byteLength} bytes, type: ${initDataType})`);
     syncWithDaemon();
     return originalGenerateRequest.apply(this, arguments);
