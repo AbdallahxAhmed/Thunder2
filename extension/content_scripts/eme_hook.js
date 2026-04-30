@@ -186,7 +186,7 @@
         try { bodyBytes = await bodyBytes.arrayBuffer(); } catch (_) {}
       }
     } else if (request) {
-      const requestMethod = request.method ? request.method.toUpperCase() : "GET";
+      const requestMethod = request.method.toUpperCase();
       if (requestMethod !== "GET" && requestMethod !== "HEAD") {
         try {
           bodyBytes = await request.clone().arrayBuffer();
@@ -194,9 +194,7 @@
       }
     }
 
-    const headerSources = [];
-    if (request?.headers) headerSources.push(request.headers);
-    if (init?.headers) headerSources.push(init.headers);
+    const headerSources = [request?.headers, init?.headers].filter(Boolean);
     if (headerSources.length) {
       const combined = headerSources.reduce(
         (acc, src) => Object.assign(acc, extractHeaders(src)),
