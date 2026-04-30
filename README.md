@@ -227,7 +227,7 @@ If `engine` is explicitly provided, it overrides routing.
 
 ## Extension Workflows
 ### DRM License Proxy
-1. `eme_hook.js` captures PSSH (EME), manifest URL, and license requests.
+1. `eme_hook.js` captures PSSH (EME), manifest URL, and license requests (fetch/XHR, including `Request` objects).
 2. `bridge.js` forwards captured data to the service worker.
 3. `background.js` stores the DRM package until the user triggers a RAW download.
 4. Daemon negotiates keys via `pywidevine` and invokes `N_m3u8DL-RE`.
@@ -267,31 +267,69 @@ If `engine` is explicitly provided, it overrides routing.
 
 ## Development Progress
 ### Backend (UHDD Daemon)
-- ✅ Core API implemented: `/api/download`, `/api/download/{id}`, `/api/health`, `/api/info`
-- ✅ Engine integrations: aria2, yt-dlp, N_m3u8DL-RE + Widevine CDM negotiation
-- ✅ Routing, job manager, structured logging, and config handling in place
-- ⏳ Spec tasks still open: full pytest + coverage run (T039) and quickstart validation (T040)
+- ✅ FastAPI app with lifespan startup (logging, runtime dirs, engine registration, initial health check)
+- ✅ Core endpoints: `/api/download`, `/api/download/{id}`, `/api/info`, `/api/health` + structured error responses
+- ✅ Deterministic routing: DRM keys or `.mpd` → `m3u8`, known media domains or `.m3u8` → `ytdlp`, default → `aria2`
+- ✅ Engine integrations: aria2 JSON-RPC polling, yt-dlp module, N_m3u8DL-RE + Widevine CDM negotiation
+- ✅ JSON logging with redaction + `X-Request-ID` correlation IDs
+- ⏳ Spec tasks still open in `specs/001-uhdd-download-daemon/tasks.md`: T039 (full pytest + coverage), T040 (quickstart validation)
 
 ### Extension (MV3)
-- ✅ DRM interception pipeline + license proxy dispatch
-- ✅ Native download hijacking → aria2
-- ✅ Quality Picker popup (format discovery + dispatch)
-- ✅ Floating UI (hybrid menu + background proxy + drag handling)
+- ✅ DRM interception pipeline + license proxy buffering (EME/PSSH + license headers) with explicit user-triggered dispatch
+- ✅ Native download hijacking → aria2 with anti-loop guard and metadata forwarding
+- ✅ Quality Picker popup (format discovery via `/api/info` + dispatch)
+- ✅ Floating UI (hybrid RAW + parsed formats menu, draggable overlay, background proxy)
+- ⚠️ Format prefetch exists but is not wired: `prefetchFormats()` is implemented yet its triggers in `tabs.onUpdated` and `tabs.onActivated` are commented out.
 
-### Current Problems (from specs)
-- ⚠️ Floating UI specs conflict: MV3 v6 "Ghost Overlay Tracking" requires anchored, non-draggable UI + top-frame enforcement, while the active hybrid UI is draggable and runs in all frames.
-- ⚠️ Spec status drift: multiple specs still marked "Draft" even though corresponding features are implemented.
-- ⚠️ Task checklists are out of sync (some MV3 tasks still unchecked despite code presence).
+### Current Problems / Open Items
+- Floating UI needs IDM-like auto-placement: anchor to the detected `<video>` element and track it on resize/scroll, while still allowing manual drag. Current behavior starts top-right and relies on user drag.
+- Spec status drift: several spec docs are still marked Draft or have unchecked tasks despite matching code being present (e.g., MV3 tasks T007/T008/T009/T014). Align spec status + checklists to actual implementation.
 
 ## Development
+### Step-by-step local dev
+1. Install dev dependencies: `pip install -r requirements-dev.txt`
+2. Start aria2 RPC (see Quick Start step 3)
+3. Start the daemon with reload (see Backend section below)
+4. Load/reload the extension (see Extension section below)
+5. Run tests (see Tests section below)
+
 ### Install dev dependencies
 ```bash
 pip install -r requirements-dev.txt
 ```
 
-### Run tests
+### Backend (UHDD daemon)
+- Configuration comes from `.env` or environment variables (`ARIA2_RPC_URL`, `ARIA2_RPC_SECRET`, `DOWNLOAD_DIR`, `LOG_DIR`, `LOG_LEVEL`, `HOST`, `PORT`, `WVD_PATH`).
+- Start the API with auto-reload:
+```bash
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+```
+- Runtime output:
+  - JSON logs: `logs/uhdd.log` (created on startup)
+  - Downloads: `downloads/` (created on startup)
+- Engine registration:
+  - `aria2` is always registered (expects a running aria2 RPC endpoint)
+  - `ytdlp` registers only if the `yt_dlp` module is installed
+  - `m3u8` registers only if `N_m3u8DL-RE` is on `PATH`
+  - Check availability at `GET /api/health`
+
+### Extension (MV3)
+- No build step. Source lives in `extension/`:
+  - Service worker: `background.js`
+  - Content scripts: `content_scripts/eme_hook.js`, `content_scripts/bridge.js`, `content.js`
+  - Popup UI: `popup.html` + `popup.js`
+- Load unpacked via `chrome://extensions` → **Developer mode** → **Load unpacked** → `extension/`.
+- After edits, hit **Reload** on the extension and refresh the target page to re-inject content scripts.
+- Service worker logs: click **Service worker** in the extension card.
+
+### Tests
 ```bash
 pytest
+```
+
+Optional coverage:
+```bash
+pytest --cov=src --cov-report=term-missing
 ```
 
 ## Responsible Use

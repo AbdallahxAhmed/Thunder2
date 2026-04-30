@@ -88,6 +88,14 @@
     return result;
   }
 
+  function resolveFetchUrl(input) {
+    if (typeof input === "string") return input;
+    if (input instanceof Request) return input.url || "";
+    if (input instanceof URL) return input.toString();
+    if (input && typeof input.url === "string") return input.url;
+    return "";
+  }
+
   function syncWithDaemon() {
     // Require manifest + PSSH + license URL — dispatch once
     if (capturedManifestUrl && capturedPSSH && capturedLicenseUrl && !dispatched) {
@@ -151,7 +159,8 @@
 
   const originalFetch = window.fetch;
   window.fetch = async function (input, init) {
-    const url = typeof input === "string" ? input : input && input.url ? input.url : "";
+    const request = input instanceof Request ? input : null;
+    const url = resolveFetchUrl(input);
 
     // Capture .mpd / .m3u8 manifest URLs
     if (url.includes(".mpd") || url.includes(".m3u8")) {
@@ -168,15 +177,37 @@
     }
 
     // Detect license server requests
-    if (init) {
-      let bodyBytes = init.body || null;
+    let bodyBytes = null;
+    let mergedHeaders = null;
+
+    if (init && init.body) {
+      bodyBytes = init.body;
       if (bodyBytes instanceof Blob) {
         try { bodyBytes = await bodyBytes.arrayBuffer(); } catch (_) {}
       }
-      handlePotentialLicenseRequest(url, init.headers, bodyBytes);
-    } else if (isKnownLicenseUrl(url)) {
-      // GET-based license URL (rare but possible) — no body to check
-      handlePotentialLicenseRequest(url, null, null);
+    } else if (request) {
+      const requestMethod = request.method;
+      if (requestMethod !== "GET" && requestMethod !== "HEAD") {
+        try {
+          bodyBytes = await request.clone().arrayBuffer();
+        } catch (_) {}
+      }
+    }
+
+    const headerSources = [request?.headers, init?.headers].filter(Boolean);
+    if (headerSources.length) {
+      const combined = headerSources.reduce(
+        (acc, src) => Object.assign(acc, extractHeaders(src)),
+        {},
+      );
+      if (Object.keys(combined).length > 0) {
+        mergedHeaders = combined;
+      }
+    }
+
+    const hasHeaders = Boolean(mergedHeaders);
+    if (bodyBytes || hasHeaders || isKnownLicenseUrl(url)) {
+      handlePotentialLicenseRequest(url, mergedHeaders, bodyBytes);
     }
 
     return originalFetch.apply(this, arguments);

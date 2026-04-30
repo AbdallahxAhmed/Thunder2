@@ -18,14 +18,35 @@ class TestClassifyRouting:
         """drm_keys must override even YouTube URLs."""
         assert classify("https://www.youtube.com/watch?v=x", drm_keys="abc:def") == "m3u8"
 
-    # Rule 2: .mpd URL → m3u8
+    # Rule 2: pssh + license_url → m3u8 (CDM negotiation)
+    def test_pssh_license_routes_to_m3u8(self):
+        assert (
+            classify(
+                "https://cdn.example.com/stream.mpd",
+                pssh="base64pssh",
+                license_url="https://license.example.com",
+            )
+            == "m3u8"
+        )
+
+    def test_pssh_license_overrides_media_domain(self):
+        assert (
+            classify(
+                "https://www.youtube.com/watch?v=x",
+                pssh="base64pssh",
+                license_url="https://license.example.com",
+            )
+            == "m3u8"
+        )
+
+    # Rule 3: .mpd URL → m3u8
     def test_mpd_url_routes_to_m3u8(self):
         assert classify("https://cdn.example.com/stream.mpd") == "m3u8"
 
     def test_mpd_url_case_insensitive(self):
         assert classify("https://cdn.example.com/stream.MPD") == "m3u8"
 
-    # Rule 3: known media sites → ytdlp
+    # Rule 4: known media sites → ytdlp
     def test_youtube_routes_to_ytdlp(self):
         assert classify("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "ytdlp"
 
@@ -50,11 +71,11 @@ class TestClassifyRouting:
     def test_twitch_routes_to_ytdlp(self):
         assert classify("https://www.twitch.tv/clips/something") == "ytdlp"
 
-    # Rule 4: .m3u8 URL (no drm_keys) → ytdlp
+    # Rule 5: .m3u8 URL (no drm_keys) → ytdlp
     def test_m3u8_url_routes_to_ytdlp(self):
         assert classify("https://cdn.example.com/live/stream.m3u8") == "ytdlp"
 
-    # Rule 5: everything else → aria2
+    # Rule 6: everything else → aria2
     def test_zip_routes_to_aria2(self):
         assert classify("https://example.com/archive.zip") == "aria2"
 
