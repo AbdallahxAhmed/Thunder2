@@ -185,26 +185,30 @@
       if (bodyBytes instanceof Blob) {
         try { bodyBytes = await bodyBytes.arrayBuffer(); } catch (_) {}
       }
-    } else if (request && request.method?.toUpperCase() !== "GET") {
-      try {
-        bodyBytes = await request.clone().arrayBuffer();
-      } catch (_) {}
+    } else if (request) {
+      const requestMethod = request.method ? request.method.toUpperCase() : "GET";
+      if (requestMethod !== "GET" && requestMethod !== "HEAD") {
+        try {
+          bodyBytes = await request.clone().arrayBuffer();
+        } catch (_) {}
+      }
     }
 
     const headerSources = [];
     if (request?.headers) headerSources.push(request.headers);
     if (init?.headers) headerSources.push(init.headers);
     if (headerSources.length) {
-      const combined = Object.assign(
+      const combined = headerSources.reduce(
+        (acc, src) => Object.assign(acc, extractHeaders(src)),
         {},
-        ...headerSources.map((src) => extractHeaders(src)),
       );
       if (Object.keys(combined).length > 0) {
         mergedHeaders = combined;
       }
     }
 
-    if (bodyBytes || mergedHeaders || isKnownLicenseUrl(url)) {
+    const hasHeaders = Boolean(mergedHeaders);
+    if (bodyBytes || hasHeaders || isKnownLicenseUrl(url)) {
       handlePotentialLicenseRequest(url, mergedHeaders, bodyBytes);
     }
 
