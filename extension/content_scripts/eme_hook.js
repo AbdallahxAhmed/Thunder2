@@ -88,6 +88,14 @@
     return result;
   }
 
+  function resolveFetchUrl(input) {
+    if (typeof input === "string") return input;
+    if (input instanceof Request) return input.url || "";
+    if (input instanceof URL) return input.toString();
+    if (input && typeof input.url === "string") return input.url;
+    return "";
+  }
+
   function syncWithDaemon() {
     // Require manifest + PSSH + license URL — dispatch once
     if (capturedManifestUrl && capturedPSSH && capturedLicenseUrl && !dispatched) {
@@ -152,13 +160,7 @@
   const originalFetch = window.fetch;
   window.fetch = async function (input, init) {
     const request = input instanceof Request ? input : null;
-    const url = typeof input === "string"
-      ? input
-      : request
-        ? request.url
-        : input && input.url
-          ? input.url
-          : "";
+    const url = resolveFetchUrl(input);
 
     // Capture .mpd / .m3u8 manifest URLs
     if (url.includes(".mpd") || url.includes(".m3u8")) {
@@ -193,8 +195,10 @@
     if (request?.headers) headerSources.push(request.headers);
     if (init?.headers) headerSources.push(init.headers);
     if (headerSources.length) {
-      const combined = {};
-      headerSources.forEach((src) => Object.assign(combined, extractHeaders(src)));
+      const combined = Object.assign(
+        {},
+        ...headerSources.map((src) => extractHeaders(src)),
+      );
       if (Object.keys(combined).length > 0) {
         mergedHeaders = combined;
       }
