@@ -289,9 +289,38 @@ If `engine` is explicitly provided, it overrides routing.
 pip install -r requirements-dev.txt
 ```
 
-### Run tests
+### Backend (UHDD daemon)
+- Configuration comes from `.env` or environment variables (`ARIA2_RPC_URL`, `ARIA2_RPC_SECRET`, `DOWNLOAD_DIR`, `LOG_DIR`, `LOG_LEVEL`, `HOST`, `PORT`, `WVD_PATH`).
+- Start the API with auto-reload:
+```bash
+uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+```
+- Runtime output:
+  - JSON logs: `logs/uhdd.log` (created on startup)
+  - Downloads: `downloads/` (created on startup)
+- Engine registration:
+  - `aria2` is always registered (expects a running aria2 RPC endpoint)
+  - `ytdlp` registers only if the `yt_dlp` module is installed
+  - `m3u8` registers only if `N_m3u8DL-RE` is on `PATH`
+  - Check availability at `GET /api/health`
+
+### Extension (MV3)
+- No build step. Source lives in `extension/`:
+  - Service worker: `background.js`
+  - Content scripts: `content_scripts/eme_hook.js`, `content_scripts/bridge.js`, `content.js`
+  - Popup UI: `popup.html` + `popup.js`
+- Load unpacked via `chrome://extensions` → **Developer mode** → **Load unpacked** → `extension/`.
+- After edits, hit **Reload** on the extension and refresh the target page to re-inject content scripts.
+- Service worker logs: click **Service worker** in the extension card.
+
+### Tests
 ```bash
 pytest
+```
+
+Optional coverage:
+```bash
+pytest --cov=src --cov-report=term-missing
 ```
 
 ## Responsible Use
