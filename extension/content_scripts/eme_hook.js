@@ -7,6 +7,11 @@
   const LICENSE_URL_PATTERNS = [
     "shield-drm.imggaming.com",
     "/api/v2/license",
+    "widevine",
+    "/license",
+    "/licence",
+    "drm",
+    "aljazeera",
   ];
 
   // Headers we MUST capture from the license request (case-insensitive match)
@@ -22,6 +27,8 @@
   let capturedPSSH = null;        // base64-encoded PSSH
   let capturedLicenseUrl = null;
   let capturedLicenseHeaders = {};
+  let drmDetected = false;
+  let drmHintDispatched = false;
   let dispatched = false;
 
   // ─── Helpers ──────────────────────────────────────────────────────────
@@ -49,6 +56,17 @@
     if (!url) return false;
     const lower = url.toLowerCase();
     return LICENSE_URL_PATTERNS.some((p) => lower.includes(p));
+  }
+
+  function isLikelyDrmManifestUrl(url) {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    return (
+      lower.includes("widevine") ||
+      lower.includes("drm") ||
+      lower.includes("cenc") ||
+      lower.includes("license")
+    );
   }
 
   function sanitizeTitle(raw) {
@@ -123,9 +141,23 @@
           licenseUrl: capturedLicenseUrl,
           licenseHeaders: capturedLicenseHeaders,
           title: title,
+          drmHint: true,
         },
       }));
     }
+  }
+
+  function dispatchDrmHintUpdate() {
+    if (!capturedManifestUrl || dispatched || drmHintDispatched) return;
+    drmHintDispatched = true;
+    window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
+      detail: {
+        type: "manifest",
+        url: capturedManifestUrl,
+        title: getPageTitle(),
+        drmHint: true,
+      },
+    }));
   }
 
   // ─── License Request Detection (shared logic) ─────────────────────────
@@ -141,6 +173,8 @@
     if (urlMatch || bodyMatch) {
       capturedLicenseUrl = url;
       capturedLicenseHeaders = extractHeaders(headers);
+      drmDetected = true;
+      dispatchDrmHintUpdate();
 
       const reason = urlMatch && bodyMatch ? "URL + challenge"
                    : urlMatch             ? "URL pattern"
@@ -168,8 +202,14 @@
       console.log(`${LOG} 📡 Manifest captured: ${url}`);
 
       if (url.includes(".m3u8")) {
+        const drmHint = drmDetected || isLikelyDrmManifestUrl(url);
         window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
-          detail: { type: "manifest", url: url, title: getPageTitle() },
+          detail: {
+            type: "manifest",
+            url: url,
+            title: getPageTitle(),
+            drmHint,
+          },
         }));
       } else {
         syncWithDaemon();
@@ -229,8 +269,9 @@
       console.log(`${LOG} 📡 Manifest captured (XHR): ${url}`);
 
       if (url.includes(".m3u8")) {
+        const drmHint = drmDetected || isLikelyDrmManifestUrl(url);
         window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
-          detail: { type: "manifest", url: url },
+          detail: { type: "manifest", url: url, drmHint },
         }));
       } else {
         syncWithDaemon();
@@ -258,6 +299,8 @@
   MediaKeySession.prototype.generateRequest = async function (initDataType, initData) {
     const psshBase64 = arrayBufferToBase64(initData);
     capturedPSSH = psshBase64;
+    drmDetected = true;
+    dispatchDrmHintUpdate();
     console.log(`${LOG} 🛡️ PSSH captured (${initData.byteLength} bytes, type: ${initDataType})`);
     syncWithDaemon();
     return originalGenerateRequest.apply(this, arguments);

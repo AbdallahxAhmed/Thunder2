@@ -64,6 +64,7 @@ class TestDownloadRequest:
         assert req.cookies is None
         assert req.user_agent is None
         assert req.drm_keys is None
+        assert req.drm_hint is None
 
 
 class TestDownloadStatus:

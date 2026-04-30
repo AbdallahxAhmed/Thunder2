@@ -3,10 +3,11 @@
 Routing rules (evaluated in priority order):
   1. ``drm_keys`` present           → ``m3u8``  (N_m3u8DL-RE)
   2. ``pssh`` + ``license_url``     → ``m3u8``  (CDM negotiation)
-  3. URL ends with ``.mpd``         → ``m3u8``
-  4. URL domain is a known media site → ``ytdlp``
-  5. URL ends with ``.m3u8``        → ``ytdlp``
-  6. Everything else                → ``aria2``
+  3. ``drm_hint`` present           → ``m3u8``  (DRM/manifest signal)
+  4. URL ends with ``.mpd``         → ``m3u8``
+  5. URL domain is a known media site → ``ytdlp``
+  6. URL ends with ``.m3u8``        → ``ytdlp``
+  7. Everything else                → ``aria2``
 """
 
 from __future__ import annotations
@@ -56,6 +57,7 @@ def classify(
     drm_keys: Optional[str] = None,
     pssh: Optional[str] = None,
     license_url: Optional[str] = None,
+    drm_hint: Optional[bool] = None,
 ) -> str:
     """Return the engine name for the given URL and optional DRM metadata.
 
@@ -71,6 +73,14 @@ def classify(
         logger.debug(
             "Route → m3u8 (pssh + license_url → CDM negotiation)",
             extra={"event": "route.drm_proxy"},
+        )
+        return "m3u8"
+
+    # Rule 2: explicit DRM hint from the interceptor
+    if drm_hint:
+        logger.debug(
+            "Route → m3u8 (drm_hint set)",
+            extra={"event": "route.drm_hint"},
         )
         return "m3u8"
 

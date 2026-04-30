@@ -25,6 +25,7 @@ function getBuffer(tabId) {
       licenseUrl: null,
       licenseHeaders: {},
       title: null,
+      drmHint: false,
       dispatchedUrls: new Set(),
     });
   }
@@ -54,33 +55,33 @@ const PREFETCH_DOMAINS = new Set([
  * Fetch format info from the daemon and populate the cache.
  * Returns the cached entry or null on failure.
  */
-async function prefetchFormats(tabId, url) {
+async function prefetchFormats(tabId, url, drmHint = false) {
   // Don't re-fetch if we already have a fresh entry for this URL
   const existing = formatCache.get(tabId);
-  if (existing && existing.url === url && existing.status === "fetching") {
+  if (existing && existing.url === url && existing.drmHint === drmHint && existing.status === "fetching") {
     return; // another fetch is already in flight
   }
-  if (existing && existing.url === url && existing.status === "ready" &&
+  if (existing && existing.url === url && existing.drmHint === drmHint && existing.status === "ready" &&
       (Date.now() - existing.ts) < 300_000) {
     return; // still fresh
   }
 
   // Mark as fetching so concurrent opens don't duplicate
-  formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching" });
+  formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
   console.log(`${LOG} Pre-fetching formats for tab ${tabId}: ${url.substring(0, 60)}…`);
 
   try {
     const resp = await fetch(
-      `${DAEMON_INFO_URL}?url=${encodeURIComponent(url)}`,
+      `${DAEMON_INFO_URL}?url=${encodeURIComponent(url)}&drm_hint=${drmHint ? "true" : "false"}`,
       { signal: AbortSignal.timeout(30_000) }
     );
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
-    formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready" });
+    formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready", drmHint });
     console.log(`${LOG} Pre-fetch complete for tab ${tabId} — ${data.options?.length || 0} options`);
   } catch (err) {
     console.warn(`${LOG} Pre-fetch failed for tab ${tabId}:`, err.message);
-    formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error" });
+    formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error", drmHint });
   }
 }
 
@@ -106,6 +107,10 @@ async function dispatchToUHDD(tabId) {
     payload.pssh = buffer.pssh;
     payload.license_url = buffer.licenseUrl;
     payload.license_headers = buffer.licenseHeaders || {};
+  }
+
+  if (buffer.drmHint) {
+    payload.drm_hint = true;
   }
 
   // Include page title for clean filenames
@@ -217,6 +222,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "manifest") {
       console.log(`${LOG} [tab ${tabId}] m3u8 manifest cached (no auto-dispatch): ${message.url}`);
       buffer.manifestUrl = message.url;
+      buffer.drmHint = buffer.drmHint || Boolean(message.drmHint);
       if (message.title) buffer.title = message.title;
       // NOTE: NO dispatchToUHDD() — user must explicitly trigger download
       return;
@@ -226,6 +232,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       buffer.pssh = message.pssh;
       buffer.licenseUrl = message.licenseUrl;
       buffer.licenseHeaders = message.licenseHeaders || {};
+      buffer.drmHint = true;
       if (message.title) buffer.title = message.title;
       // NOTE: NO dispatchToUHDD() — user must explicitly trigger download
       return;
@@ -250,6 +257,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const cached = formatCache.get(tabId);
     const buffer = tabBuffers.get(tabId);
     const hasRawStream = buffer && !!buffer.manifestUrl;
+    const drmHint = buffer ? buffer.drmHint : false;
 
     function sendHybridResponse(data, fromCache) {
       const payload = {
@@ -274,7 +282,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     // ── Cache HIT (ready + same URL + fresh) ─────────────────────────
-    if (cached && cached.url === url && cached.status === "ready" &&
+    if (cached && cached.url === url && cached.drmHint === drmHint && cached.status === "ready" &&
         (Date.now() - cached.ts) < 300_000) {
       console.log(`${LOG} Format cache HIT for tab ${tabId}`);
       sendHybridResponse(cached.data, true);
@@ -282,7 +290,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     // ── Cache is currently fetching — poll at 100ms for fast resolution ─
-    if (cached && cached.url === url && cached.status === "fetching") {
+    if (cached && cached.url === url && cached.drmHint === drmHint && cached.status === "fetching") {
       console.log(`${LOG} Format cache PENDING for tab ${tabId}, waiting…`);
       let waited = 0;
       const poll = setInterval(() => {
@@ -306,19 +314,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     // ── Cache MISS — fetch now ───────────────────────────────────────
     console.log(`${LOG} Format cache MISS for tab ${tabId}, fetching…`);
-    formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching" });
-    fetch(`${DAEMON_INFO_URL}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(30_000) })
+    formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
+    fetch(`${DAEMON_INFO_URL}?url=${encodeURIComponent(url)}&drm_hint=${drmHint ? "true" : "false"}`, { signal: AbortSignal.timeout(30_000) })
       .then(resp => {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return resp.json();
       })
       .then(data => {
-        formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready" });
+        formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready", drmHint });
         sendHybridResponse(data, false);
       })
       .catch(err => {
         console.error(`${LOG} /api/info failed:`, err);
-        formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error" });
+        formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error", drmHint });
         if (hasRawStream) sendHybridResponse(null, false);
         else sendResponse({ ok: false, error: err.message });
       });
@@ -356,6 +364,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         payload.license_url = buffer.licenseUrl;
         payload.license_headers = buffer.licenseHeaders || {};
       }
+      if (buffer.drmHint) payload.drm_hint = true;
       if (buffer.title) payload.title = buffer.title;
     }
 
