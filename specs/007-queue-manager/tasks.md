@@ -64,12 +64,12 @@
 
 - [x] T013 [US1] Expand `DownloadStatus` enum in `src/models.py` — add `PAUSED = "paused"` and `CANCELLED = "cancelled"` values
 - [x] T014 [US1] Create `src/queue_manager.py` — `QueueManager` class with `__init__`, `_hot_cache: dict`, `_lock: asyncio.Lock`, `_db_path: str`
-- [ ] T015 [US1] Implement `QueueManager.init()` in `src/queue_manager.py` — call `init_db()`, load non-terminal jobs from SQLite into Hot Cache
-- [ ] T016 [US1] Implement `QueueManager.create_job()` in `src/queue_manager.py` — INSERT into SQLite, add to Hot Cache, return `DownloadJob`
-- [ ] T017 [US1] Implement `QueueManager.get_job()` in `src/queue_manager.py` — read from Hot Cache first, fallback to SQLite for terminal jobs
-- [ ] T018 [US1] Implement `QueueManager.update_job()` in `src/queue_manager.py` — state transitions write to SQLite + update cache; progress-only updates write to cache only
-- [ ] T019 [US1] Implement `QueueManager.list_jobs()` in `src/queue_manager.py` — paginated query with status/engine/group_id filters, merge Hot Cache volatile fields (progress/speed/eta) into results
-- [ ] T020 [US1] Implement `QueueManager.delete_job()` in `src/queue_manager.py` — DELETE from SQLite, remove from Hot Cache if present
+- [x] T015 [US1] Implement `QueueManager.init()` in `src/queue_manager.py` — call `init_db()`, load non-terminal jobs from SQLite into Hot Cache
+- [x] T016 [US1] Implement `QueueManager.create_job()` in `src/queue_manager.py` — INSERT into SQLite, add to Hot Cache, return `DownloadJob`
+- [x] T017 [US1] Implement `QueueManager.get_job()` in `src/queue_manager.py` — read from Hot Cache first, fallback to SQLite for terminal jobs
+- [x] T018 [US1] Implement `QueueManager.update_job()` in `src/queue_manager.py` — state transitions write to SQLite + update cache; progress-only updates write to cache only
+- [x] T019 [US1] Implement `QueueManager.list_jobs()` in `src/queue_manager.py` — paginated query with status/engine/group_id filters, merge Hot Cache volatile fields (progress/speed/eta) into results
+- [x] T020 [US1] Implement `QueueManager.delete_job()` in `src/queue_manager.py` — DELETE from SQLite, remove from Hot Cache if present
 
 **Checkpoint**: QueueManager persists jobs, Hot Cache provides volatile data, startup recovery works. No scheduler yet — all jobs stay QUEUED.
 
