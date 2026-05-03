@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     wvd_path: str = ""  # Path to Widevine Device (.wvd) file for CDM negotiation
+    db_path: str = "data/thunder.db"  # SQLite database for Queue Manager persistence
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
