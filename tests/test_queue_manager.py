@@ -212,3 +212,86 @@ async def test_scheduler_dynamic_limits(qm):
             
     assert downloading == 2  # New limit
 
+
+from src.engines import register_engine
+
+class MockEngine:
+    def execute(self, job, request):
+        import time
+        for i in range(10):
+            if getattr(job, '_cancel_flag', False):
+                raise InterruptedError("Cancelled")
+            job.progress = i * 10
+            time.sleep(0.1)
+        return {"status": "completed", "output_path": "/tmp/mock.mp4"}
+
+register_engine("aria2", MockEngine())
+register_engine("ytdlp", MockEngine())
+register_engine("m3u8", MockEngine())
+
+
+@pytest.mark.asyncio
+async def test_pause_and_resume_job(qm):
+    """Test DOWNLOADING -> PAUSED -> QUEUED."""
+    job_id = str(uuid4())
+    await qm.create_job(job_id, "https://example.com", "aria2")
+    
+    # Wait for it to start downloading
+    await asyncio.sleep(0.2)
+    state = await qm.get_job(job_id)
+    assert state.status == DownloadStatus.DOWNLOADING
+    
+    # Pause
+    await qm.pause_job(job_id)
+    state = await qm.get_job(job_id)
+    assert state.status == DownloadStatus.PAUSED
+    
+    # Resume
+    await qm.resume_job(job_id)
+    state = await qm.get_job(job_id)
+    assert state.status == DownloadStatus.QUEUED
+
+
+@pytest.mark.asyncio
+async def test_cancel_job(qm):
+    """Test CANCELLED transitions."""
+    job_id = str(uuid4())
+    await qm.create_job(job_id, "https://example.com", "aria2")
+    
+    await asyncio.sleep(0.2)
+    
+    await qm.cancel_job(job_id)
+    state = await qm.get_job(job_id)
+    assert state.status == DownloadStatus.CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_retry_job(qm):
+    """Test FAILED -> QUEUED."""
+    job_id = str(uuid4())
+    await qm.create_job(job_id, "https://example.com", "aria2")
+    await qm.update_job(job_id, status=DownloadStatus.FAILED)
+    
+    await qm.retry_job(job_id)
+    state = await qm.get_job(job_id)
+    assert state.status == DownloadStatus.QUEUED
+
+
+@pytest.mark.asyncio
+async def test_invalid_transitions(qm):
+    """Verify 409-like errors for invalid transitions."""
+    job_id = str(uuid4())
+    await qm.create_job(job_id, "https://example.com", "aria2")
+    await qm.update_job(job_id, status=DownloadStatus.COMPLETED)
+    
+    with pytest.raises(ValueError, match="Only DOWNLOADING jobs can be paused"):
+        await qm.pause_job(job_id)
+        
+    with pytest.raises(ValueError, match="Only PAUSED jobs can be resumed"):
+        await qm.resume_job(job_id)
+        
+    with pytest.raises(ValueError, match="Job is already in a terminal state"):
+        await qm.cancel_job(job_id)
+        
+    with pytest.raises(ValueError, match="Only FAILED jobs can be retried"):
+        await qm.retry_job(job_id)

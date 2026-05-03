@@ -116,18 +116,18 @@
 
 ### Tests for User Story 3
 
-- [ ] T030 [P] [US3] Write test for pause — DOWNLOADING→PAUSED, task cancelled, slot freed in `tests/test_queue_manager.py`
-- [ ] T031 [P] [US3] Write test for resume — PAUSED→QUEUED, scheduler woken in `tests/test_queue_manager.py`
-- [ ] T032 [P] [US3] Write test for cancel — QUEUED→CANCELLED and DOWNLOADING→CANCELLED in `tests/test_queue_manager.py`
-- [ ] T033 [P] [US3] Write test for retry — FAILED→QUEUED, retry_count incremented in `tests/test_queue_manager.py`
-- [ ] T034 [P] [US3] Write test for invalid transitions — verify 409 on pause(completed), resume(queued), etc. in `tests/test_queue_manager.py`
+- [x] T030 [P] [US3] Write test for pause — DOWNLOADING→PAUSED, task cancelled, slot freed in `tests/test_queue_manager.py`
+- [x] T031 [P] [US3] Write test for resume — PAUSED→QUEUED, scheduler woken in `tests/test_queue_manager.py`
+- [x] T032 [P] [US3] Write test for cancel — QUEUED→CANCELLED and DOWNLOADING→CANCELLED in `tests/test_queue_manager.py`
+- [x] T033 [P] [US3] Write test for retry — FAILED→QUEUED, retry_count incremented in `tests/test_queue_manager.py`
+- [x] T034 [P] [US3] Write test for invalid transitions — verify 409 on pause(completed), resume(queued), etc. in `tests/test_queue_manager.py`
 
 ### Implementation for User Story 3
 
-- [ ] T035 [US3] Implement `QueueManager.pause_job()` in `src/queue_manager.py` — validate state, cancel asyncio.Task, update status to PAUSED, call `_on_job_finished()`
-- [ ] T036 [US3] Implement `QueueManager.resume_job()` in `src/queue_manager.py` — validate PAUSED state, transition to QUEUED, fire scheduler event
-- [ ] T037 [US3] Implement `QueueManager.cancel_job()` in `src/queue_manager.py` — validate state, cancel task if DOWNLOADING, transition to CANCELLED, call `_on_job_finished()` if was active
-- [ ] T038 [US3] Implement `QueueManager.retry_job()` in `src/queue_manager.py` — validate FAILED state, increment retry_count, transition to QUEUED, fire scheduler event
+- [x] T035 [US3] Implement `QueueManager.pause_job()` in `src/queue_manager.py` — validate state, cancel asyncio.Task, update status to PAUSED, call `_on_job_finished()`
+- [x] T036 [US3] Implement `QueueManager.resume_job()` in `src/queue_manager.py` — validate PAUSED state, transition to QUEUED, fire scheduler event
+- [x] T037 [US3] Implement `QueueManager.cancel_job()` in `src/queue_manager.py` — validate state, cancel task if DOWNLOADING, transition to CANCELLED, call `_on_job_finished()` if was active
+- [x] T038 [US3] Implement `QueueManager.retry_job()` in `src/queue_manager.py` — validate FAILED state, increment retry_count, transition to QUEUED, fire scheduler event
 
 **Checkpoint**: Full state machine operational. Pause frees slots, resume re-queues, cancel is terminal, retry resets failed jobs.
 

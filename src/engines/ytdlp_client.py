@@ -67,6 +67,9 @@ class YtdlpClient:
 
         # Progress hook to update job progress
         def _progress_hook(d: dict) -> None:
+            if getattr(job, '_cancel_flag', False):
+                raise InterruptedError("Job was cancelled by QueueManager")
+                
             if d.get("status") == "downloading":
                 total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
                 downloaded = d.get("downloaded_bytes", 0)

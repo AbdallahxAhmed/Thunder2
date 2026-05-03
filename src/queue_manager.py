@@ -31,6 +31,7 @@ class ActiveJobState:
     group_id: Optional[str] = None
     title: Optional[str] = None
     task: Optional[asyncio.Task] = None
+    kwargs: Dict[str, Any] = __import__("dataclasses").field(default_factory=dict)
 
 
 class QueueManager:
@@ -109,9 +110,60 @@ class QueueManager:
                     
         return global_active, engine_active
 
+    async def _engine_runner(self, job_id: str):
+        """Background task that runs the engine synchronously inside a thread."""
+        state = await self.get_job(job_id)
+        if not state:
+            return
+            
+        from src.engines import get_engine
+        from src.models import DownloadJob, DownloadRequest
+        
+        engine = get_engine(state.engine)
+        if not engine:
+            await self.update_job(job_id, status=DownloadStatus.FAILED, error=f"Engine {state.engine} not found")
+            return
+            
+        # Build objects for engine protocol
+        job = DownloadJob(id=job_id, url=state.url, engine=state.engine, status="downloading", **state.kwargs)
+        req = DownloadRequest(url=state.url, engine=state.engine, **state.kwargs)
+        
+        # Make the job cancellable
+        job._cancel_flag = False
+        state._engine_job = job
+        state._engine_client = engine
+        
+        def _execute():
+            return engine.execute(job, req)
+            
+        # Poll progress asynchronously
+        async def _progress_poller():
+            while True:
+                await asyncio.sleep(1)
+                await self.update_job(job_id, progress=job.progress, speed=job.speed, eta=job.eta)
+                
+        poller = asyncio.create_task(_progress_poller())
+        
+        try:
+            result = await asyncio.to_thread(_execute)
+            if result.get("status") == "completed":
+                await self.update_job(job_id, status=DownloadStatus.COMPLETED, output_path=result.get("output_path"))
+            else:
+                await self.update_job(job_id, status=DownloadStatus.FAILED, error=result.get("error"))
+        except asyncio.CancelledError:
+            pass
+        except InterruptedError:
+            pass
+        except Exception as e:
+            await self.update_job(job_id, status=DownloadStatus.FAILED, error=str(e))
+        finally:
+            poller.cancel()
+
     async def _execute_download(self, job_id: str):
-        """Placeholder for Phase 5 engine execution."""
-        await self.update_job(job_id, status=DownloadStatus.DOWNLOADING)
+        """Dispatch the engine runner in a background task."""
+        state = await self.update_job(job_id, status=DownloadStatus.DOWNLOADING)
+        if state:
+            state.task = asyncio.create_task(self._engine_runner(job_id))
 
     async def _promote_next(self):
         """Query QUEUED jobs and promote them up to available slots."""
@@ -347,6 +399,66 @@ class QueueManager:
             async with get_db(self._db_path) as db:
                 await db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
                 await db.commit()
+
+    async def pause_job(self, job_id: str):
+        """Soft pause a job."""
+        async with self._lock:
+            state = self._hot_cache.get(job_id)
+            if not state or state.status != DownloadStatus.DOWNLOADING:
+                raise ValueError("Only DOWNLOADING jobs can be paused.")
+                
+            if state.task:
+                state.task.cancel()
+                
+            if hasattr(state, '_engine_client') and hasattr(state, '_engine_job'):
+                if state.engine == "aria2" and getattr(state._engine_job, 'aria2_gid', None):
+                    state._engine_client.remove_download(state._engine_job.aria2_gid)
+                else:
+                    state._engine_job._cancel_flag = True
+                    
+        await self.update_job(job_id, status=DownloadStatus.PAUSED)
+
+    async def resume_job(self, job_id: str):
+        """Resume a paused job."""
+        async with self._lock:
+            state = self._hot_cache.get(job_id)
+            if not state:
+                state = await self._get_job_unlocked(job_id)
+            if not state or state.status != DownloadStatus.PAUSED:
+                raise ValueError("Only PAUSED jobs can be resumed.")
+                
+        await self.update_job(job_id, status=DownloadStatus.QUEUED)
+
+    async def cancel_job(self, job_id: str):
+        """Cancel a job."""
+        async with self._lock:
+            state = self._hot_cache.get(job_id)
+            if not state:
+                state = await self._get_job_unlocked(job_id)
+            if not state or state.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED):
+                raise ValueError("Job is already in a terminal state.")
+                
+            if state.status == DownloadStatus.DOWNLOADING:
+                if state.task:
+                    state.task.cancel()
+                if hasattr(state, '_engine_client') and hasattr(state, '_engine_job'):
+                    if state.engine == "aria2" and getattr(state._engine_job, 'aria2_gid', None):
+                        state._engine_client.remove_download(state._engine_job.aria2_gid)
+                    else:
+                        state._engine_job._cancel_flag = True
+                        
+        await self.update_job(job_id, status=DownloadStatus.CANCELLED)
+
+    async def retry_job(self, job_id: str):
+        """Retry a failed job."""
+        async with self._lock:
+            state = self._hot_cache.get(job_id)
+            if not state:
+                state = await self._get_job_unlocked(job_id)
+            if not state or state.status != DownloadStatus.FAILED:
+                raise ValueError("Only FAILED jobs can be retried.")
+                
+        await self.update_job(job_id, status=DownloadStatus.QUEUED)
 
     async def shutdown(self):
         """Shutdown the background scheduler task."""
