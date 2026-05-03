@@ -82,6 +82,7 @@ class M3u8Client:
                     pssh_b64=request.pssh,
                     license_url=request.license_url,
                     license_headers=request.license_headers,
+                    video_url=request.page_url or request.url,
                 )
                 return keys
             except Exception as exc:
@@ -131,6 +132,25 @@ class M3u8Client:
             "-M", "format=mp4",  # Force mux audio+video into a single .mp4
         ]
 
+        # ── Browser spoofing headers (anti-hotlinking bypass) ────────
+        spoof_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        cmd.extend(["-H", f"User-Agent: {spoof_ua}"])
+
+        if request.page_url:
+            cmd.extend(["-H", f"Referer: {request.page_url}"])
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(request.page_url)
+                origin = f"{parsed.scheme}://{parsed.netloc}"
+                cmd.extend(["-H", f"Origin: {origin}"])
+            except Exception:
+                pass
+
+        if request.license_headers:
+            for k, v in request.license_headers.items():
+                if k.lower() not in ("content-length", "host", "content-type"):
+                    cmd.extend(["-H", f"{k}: {v}"])
+
         # Add --key for each resolved key pair
         for key_pair in keys:
             cmd.extend(["--key", key_pair])
@@ -146,14 +166,29 @@ class M3u8Client:
                 },
             )
 
+        redacted_cmd = []
+        skip_next = False
+        for arg in cmd:
+            if skip_next:
+                redacted_cmd.append("REDACTED")
+                skip_next = False
+            elif arg == "--key":
+                redacted_cmd.append(arg)
+                skip_next = True
+            else:
+                redacted_cmd.append(arg)
+
         logger.info(
-            "N_m3u8DL-RE starting: %s with %d key(s)",
+            "N_m3u8DL-RE starting: %s with %d key(s) from %s",
             job.id,
             len(keys),
+            request.license_url or "pre-extracted",
             extra={
                 "download_id": job.id,
                 "engine": "m3u8",
                 "event": "download.started",
+                "license_url": request.license_url,
+                "cmd": redacted_cmd,
             },
         )
 

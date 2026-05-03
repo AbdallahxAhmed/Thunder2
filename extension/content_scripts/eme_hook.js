@@ -9,19 +9,23 @@
     "aljazeera",
   ];
 
-  const DRM_HINT_PATTERNS = [
-    "widevine",
-    "/license",
-    "/licence",
-    "drm",
-    "cenc",
-    ...DOMAIN_DRM_PATTERNS,
+  const TELEMETRY_DOMAINS = [
+    "pndsn.com",
+    "analytics",
+    "telemetry",
+    "tracking"
   ];
 
-  const LICENSE_URL_PATTERNS = [
+  const DRM_KEYWORDS = [
+    "widevine",
+    "drm",
+    "license",
+    "licence",
+    "acquire",
+    "key",
+    "playready",
     "shield-drm.imggaming.com",
-    "/api/v2/license",
-    ...DRM_HINT_PATTERNS,
+    ...DOMAIN_DRM_PATTERNS,
   ];
 
   // Headers we MUST capture from the license request (case-insensitive match)
@@ -37,6 +41,7 @@
   let capturedPSSH = null;        // base64-encoded PSSH
   let capturedLicenseUrl = null;
   let capturedLicenseHeaders = {};
+  let capturedDrmKeys = null;
   let drmDetected = false;
   let drmHintDispatched = false;
   let dispatched = false;
@@ -62,25 +67,40 @@
     return false;
   }
 
-  function isKnownLicenseUrl(url) {
-    if (!url) return false;
-    const lower = url.toLowerCase();
-    return LICENSE_URL_PATTERNS.some((p) => lower.includes(p));
+  function isLikelyChallenge(body) {
+    // Widevine license challenges are binary (ArrayBuffer/Uint8Array)
+    // and start with 0x08 0x04 (protobuf field 1, varint = 4 for LICENSE_REQUEST)
+    if (body instanceof ArrayBuffer || body instanceof Uint8Array) {
+      const arr = body instanceof Uint8Array ? body : new Uint8Array(body);
+      return arr.length > 2 && arr[0] === 0x08 && arr[1] === 0x04;
+    }
+    return false;
   }
 
   function isLikelyDrmManifestUrl(url) {
     if (!url) return false;
     const lower = url.toLowerCase();
-    return DRM_HINT_PATTERNS.some((p) => lower.includes(p));
+    return DRM_KEYWORDS.some((p) => lower.includes(p));
   }
 
   function sanitizeTitle(raw) {
     if (!raw || typeof raw !== "string") return null;
-    // Strip invalid filename chars: / \ : * ? " < > |
+
+    const suffixes = [
+      " - YouTube", " | Prime Video", " - Dailymotion",
+      " - Watch Online", " - Crunchyroll", " - Netflix",
+      " - Watch Free", " · GitHub"
+    ];
+
+    for (const suffix of suffixes) {
+      if (raw.endsWith(suffix)) {
+        raw = raw.substring(0, raw.length - suffix.length);
+        break;
+      }
+    }
+
     let clean = raw.replace(/[/\\:*?"<>|]/g, "").trim();
-    // Collapse multiple spaces/underscores
     clean = clean.replace(/\s+/g, " ");
-    // Truncate to 200 chars to stay filesystem-safe
     if (clean.length > 200) clean = clean.substring(0, 200).trim();
     return clean || null;
   }
@@ -120,8 +140,8 @@
   }
 
   function syncWithDaemon() {
-    // Require manifest + PSSH + license URL — dispatch once
-    if (capturedManifestUrl && capturedPSSH && capturedLicenseUrl && !dispatched) {
+    const hasFullWidevine = capturedPSSH && capturedLicenseUrl;
+    if (capturedManifestUrl && (hasFullWidevine || capturedDrmKeys) && !dispatched) {
       dispatched = true;
 
       const headerCount = Object.keys(capturedLicenseHeaders).length;
@@ -134,9 +154,13 @@
       console.log(`${LOG} ✅ Full DRM package ready!`);
       console.log(`${LOG}   Title:   ${title}`);
       console.log(`${LOG}   MPD:     ${capturedManifestUrl}`);
-      console.log(`${LOG}   PSSH:    ${capturedPSSH.substring(0, 40)}…`);
-      console.log(`${LOG}   License: ${capturedLicenseUrl}`);
-      console.log(`${LOG}   Headers: ${headerCount} total, priority [${priorityCaptured.join(", ")}]`);
+      if (capturedDrmKeys) {
+        console.log(`${LOG}   Keys:    ${capturedDrmKeys}`);
+      } else {
+        console.log(`${LOG}   PSSH:    ${capturedPSSH.substring(0, 40)}…`);
+        console.log(`${LOG}   License: ${capturedLicenseUrl}`);
+        console.log(`${LOG}   Headers: ${headerCount} total, priority [${priorityCaptured.join(", ")}]`);
+      }
 
       window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
         detail: {
@@ -145,6 +169,7 @@
           pssh: capturedPSSH,
           licenseUrl: capturedLicenseUrl,
           licenseHeaders: capturedLicenseHeaders,
+          drmKeys: capturedDrmKeys,
           title: title,
           drmHint: true,
         },
@@ -167,23 +192,67 @@
 
   // ─── License Request Detection (shared logic) ─────────────────────────
 
-  function handlePotentialLicenseRequest(url, headers, body) {
-    // Two-pronged detection:
-    //   1) URL matches a known license server pattern
-    //   2) Body looks like a binary Widevine CDM challenge
-    // Either condition is sufficient to capture the license URL.
-    const urlMatch = isKnownLicenseUrl(url);
+  function handlePotentialLicenseRequest(url, headers, body, method) {
+    if (method !== "POST" && method !== "PUT") return false;
+
+    // Strict Binary Payload Check:
+    // Ignore telemetry requests that send JSON/Strings.
+    if (!body || !(body instanceof ArrayBuffer || body instanceof Uint8Array || body instanceof DataView)) {
+      return false;
+    }
+
+    const lowerUrl = url ? url.toLowerCase() : "";
+    if (TELEMETRY_DOMAINS.some(d => lowerUrl.includes(d))) return false;
+
+    const urlMatch = DRM_KEYWORDS.some(k => lowerUrl.includes(k));
+    const headerMatch = headers && DRM_KEYWORDS.some(k => JSON.stringify(headers).toLowerCase().includes(k));
     const bodyMatch = body && isLikelyChallenge(body);
 
-    if (urlMatch || bodyMatch) {
+    if (urlMatch || headerMatch || bodyMatch) {
       capturedLicenseUrl = url;
       capturedLicenseHeaders = extractHeaders(headers);
+
+      // --- NEW AGGRESSIVE BODY LOGGING ---
+      let debugBody = null;
+      let bodyType = typeof body;
+      
+      if (body instanceof ArrayBuffer || body instanceof Uint8Array) {
+        const len = body.byteLength || body.length;
+        bodyType = `ArrayBuffer/Uint8Array (${len} bytes)`;
+        debugBody = arrayBufferToBase64(body);
+        try {
+          const bodyStr = new TextDecoder().decode(body);
+          console.log(`${LOG} 🐛 [DEBUG] Body decoded as string:\n${bodyStr}`);
+        } catch (e) {}
+      } else if (body instanceof Blob) {
+         bodyType = `Blob (${body.size} bytes)`;
+      } else if (body instanceof FormData) {
+         bodyType = "FormData";
+      } else {
+         debugBody = typeof body === "string" ? body : JSON.stringify(body);
+      }
+
+      console.log(`${LOG} 🐛 [DEBUG] License Body Type: ${bodyType}`);
+      if (debugBody) {
+        console.log(`${LOG} 🐛 [DEBUG] License Body Content (base64/string):\n${debugBody}`);
+      }
+      // ------------------------------------
+
+      if (body) {
+        try {
+          const bodyStr = typeof body === "string" ? body : new TextDecoder().decode(body);
+          if (bodyStr.trim().startsWith("{")) {
+            capturedLicenseHeaders["x-uhdd-original-body"] = bodyStr;
+          }
+        } catch (e) {}
+      }
+
       drmDetected = true;
       dispatchDrmHintIfNeeded();
 
-      const reason = urlMatch && bodyMatch ? "URL + challenge"
-                   : urlMatch             ? "URL pattern"
-                   :                        "CDM challenge bytes";
+      const reason = (urlMatch || headerMatch) && bodyMatch ? "Keywords + challenge"
+                   : (urlMatch || headerMatch) ? "Keywords pattern"
+                   : "CDM challenge bytes";
 
       console.log(`${LOG} 🔑 License URL captured (${reason}): ${url}`);
       console.log(`${LOG}    Headers: ${JSON.stringify(capturedLicenseHeaders, null, 2)}`);
@@ -250,9 +319,12 @@
       }
     }
 
+    const reqMethod = (request ? request.method : init?.method) || "GET";
+    const method = reqMethod.toUpperCase();
+
     const hasHeaders = Boolean(mergedHeaders);
-    if (bodyBytes || hasHeaders || isKnownLicenseUrl(url)) {
-      handlePotentialLicenseRequest(url, mergedHeaders, bodyBytes);
+    if (bodyBytes || hasHeaders || DRM_KEYWORDS.some(k => url.toLowerCase().includes(k))) {
+      handlePotentialLicenseRequest(url, mergedHeaders, bodyBytes, method);
     }
 
     return originalFetch.apply(this, arguments);
@@ -265,6 +337,7 @@
   const originalXHRSend = XMLHttpRequest.prototype.send;
 
   XMLHttpRequest.prototype.open = function (method, url, ...args) {
+    this._uhddMethod = typeof method === "string" ? method.toUpperCase() : "GET";
     this._uhddUrl = url;
     this._uhddHeaders = {};
 
@@ -294,11 +367,72 @@
   };
 
   XMLHttpRequest.prototype.send = function (body) {
-    handlePotentialLicenseRequest(this._uhddUrl, this._uhddHeaders, body);
+    handlePotentialLicenseRequest(this._uhddUrl, this._uhddHeaders, body, this._uhddMethod);
     return originalXHRSend.apply(this, arguments);
   };
 
-  // ─── EME Hooking (PSSH Extraction) ────────────────────────────────────
+  // ─── EME Hooking (Key Ripping & PSSH) ─────────────────────────────────
+
+  function base64UrlToHex(base64Url) {
+    const padding = '='.repeat((4 - base64Url.length % 4) % 4);
+    const base64 = (base64Url + padding).replace(/\-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    let hex = '';
+    for (let i = 0; i < rawData.length; ++i) {
+      const hexChar = rawData.charCodeAt(i).toString(16);
+      hex += (hexChar.length === 1 ? '0' : '') + hexChar;
+    }
+    return hex;
+  }
+
+  const originalUpdate = MediaKeySession.prototype.update;
+  MediaKeySession.prototype.update = async function (response) {
+    console.log(`${LOG} 🔍 MediaKeySession.update() called! Response size: ${response.byteLength || response.length} bytes`);
+
+    // Attempt 1: ClearKey JSON format {keys: [{kid, k}]}
+    try {
+      const str = new TextDecoder().decode(response);
+      console.log(`${LOG} 🔍 License response as string (first 200): ${str.substring(0, 200)}`);
+      const json = JSON.parse(str);
+      if (json.keys) {
+        const keysList = [];
+        for (const k of json.keys) {
+          if (k.kid && k.k) {
+            keysList.push(`${base64UrlToHex(k.kid)}:${base64UrlToHex(k.k)}`);
+          }
+        }
+        if (keysList.length > 0) {
+          capturedDrmKeys = keysList.join(',');
+          drmDetected = true;
+          console.log(`${LOG} 🗝️ RIPPED KEYS (ClearKey): ${capturedDrmKeys}`);
+          syncWithDaemon();
+        }
+      }
+    } catch (e) {
+      console.log(`${LOG} 🔍 License response is NOT JSON (likely Widevine binary protobuf)`);
+    }
+
+    // After the real update, listen for key status changes to extract KIDs
+    const session = this;
+    const result = originalUpdate.apply(this, arguments);
+
+    // Use keystatuseschange to confirm keys were loaded
+    try {
+      result.then(() => {
+        if (session.keyStatuses && session.keyStatuses.size > 0) {
+          const kids = [];
+          session.keyStatuses.forEach((status, keyId) => {
+            const kidHex = Array.from(new Uint8Array(keyId)).map(b => b.toString(16).padStart(2, '0')).join('');
+            console.log(`${LOG} 🔑 Key Status: KID=${kidHex} status=${status}`);
+            kids.push(kidHex);
+          });
+          console.log(`${LOG} 🔑 ${kids.length} key(s) loaded in session. KIDs: ${kids.join(', ')}`);
+        }
+      }).catch(() => {});
+    } catch (e) {}
+
+    return result;
+  };
 
   const originalGenerateRequest = MediaKeySession.prototype.generateRequest;
   MediaKeySession.prototype.generateRequest = async function (initDataType, initData) {
@@ -311,5 +445,5 @@
     return originalGenerateRequest.apply(this, arguments);
   };
 
-  console.log(`${LOG} License Proxy Hook v3 — targeting: ${LICENSE_URL_PATTERNS.join(", ")}`);
+  console.log(`${LOG} License Proxy Hook v3 — targeting: ${DRM_KEYWORDS.join(", ")}`);
 })();

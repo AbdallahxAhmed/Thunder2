@@ -313,13 +313,13 @@ async def get_media_info(
                 options=[],
             )
             return JSONResponse(content=resp.model_dump(mode="json"))
-        return JSONResponse(
-            status_code=422,
-            content=ErrorResponse(
-                error_code="EXTRACTION_ERROR",
-                message="yt-dlp could not extract info from this URL",
-            ).model_dump(),
+        resp = InfoResponse(
+            url=url,
+            status="unsupported",
+            reason="yt-dlp could not extract info from this URL",
+            options=[],
         )
+        return JSONResponse(content=resp.model_dump(mode="json"))
     except Exception as exc:
         logger.exception("Unexpected error in /api/info")
         return JSONResponse(

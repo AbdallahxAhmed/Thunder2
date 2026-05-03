@@ -44,8 +44,8 @@ class DownloadRequest(BaseModel):
     license_url: Optional[str] = Field(
         default=None, description="License server URL for Widevine CDM negotiation"
     )
-    license_headers: Optional[dict[str, Any]] = Field(
-        default=None, description="HTTP headers for the license server request"
+    license_headers: dict[str, Any] = Field(
+        default_factory=dict, description="HTTP headers for the license server request"
     )
     drm_hint: Optional[bool] = Field(
         default=None,
@@ -53,6 +53,9 @@ class DownloadRequest(BaseModel):
     )
     title: Optional[str] = Field(
         default=None, description="Page title for human-readable filenames"
+    )
+    page_url: Optional[str] = Field(
+        default=None, description="Original browser page URL for Origin/Referer spoofing"
     )
     referer: Optional[str] = Field(
         default=None, description="HTTP Referer header for the download"

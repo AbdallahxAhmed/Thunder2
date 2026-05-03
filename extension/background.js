@@ -163,6 +163,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       buffer.pssh = message.pssh;
       buffer.licenseUrl = message.licenseUrl;
       buffer.licenseHeaders = message.licenseHeaders || {};
+      if (message.drmKeys) buffer.drmKeys = message.drmKeys;
       buffer.drmHint = true;
       if (message.title) buffer.title = message.title;
       // NOTE: NO dispatchToUHDD() — user must explicitly trigger download
@@ -298,6 +299,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: false, error: "Raw stream buffer expired" });
         return true;
       }
+      if (!payload.page_url && sender.tab?.url) payload.page_url = sender.tab.url;
       payload.url = buffer.manifestUrl;
       delete payload.format_id;
       
@@ -306,8 +308,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         payload.license_url = buffer.licenseUrl;
         payload.license_headers = buffer.licenseHeaders || {};
       }
+      if (buffer.drmKeys) {
+        payload.drm_keys = buffer.drmKeys;
+      }
       if (buffer.drmHint) payload.drm_hint = true;
-      if (buffer.title) payload.title = buffer.title;
+      if (!payload.title && buffer.title) payload.title = buffer.title;
     }
 
     console.log(`${LOG} Triggering download from content script:`, payload);
