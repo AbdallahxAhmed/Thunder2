@@ -106,6 +106,29 @@ class M3u8Client:
         save_dir = os.path.abspath(self.download_dir)
         save_name = self._generate_save_name(request.url, request.title)
 
+        # ── Smart Title Fallback (Python-side) ────────────────────────
+        import re
+        from urllib.parse import urlparse
+
+        is_bad_title = not request.title or request.title.lower() == "cloud native base camp"
+        # Check if save_name looks like a UUID (even if hyphens were replaced with spaces)
+        if not is_bad_title and len(save_name) >= 32:
+            stripped = save_name.replace(" ", "").replace("-", "")
+            if len(stripped) == 32 and re.match(r'^[a-fA-F0-9]{32}$', stripped):
+                is_bad_title = True
+            elif len(save_name) > 30 and " " not in save_name:
+                is_bad_title = True
+
+        if is_bad_title and request.page_url:
+            try:
+                path = urlparse(request.page_url).path.strip('/')
+                if path:
+                    slug = path.split('/')[-1]
+                    if slug:
+                        save_name = slug.replace('-', ' ').title()
+            except Exception:
+                pass
+
         # ── Step 1: Resolve keys ──────────────────────────────────────
         try:
             keys = self._resolve_keys(request)

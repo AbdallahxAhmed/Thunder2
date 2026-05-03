@@ -299,7 +299,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: false, error: "Raw stream buffer expired" });
         return true;
       }
-      if (!payload.page_url && sender.tab?.url) payload.page_url = sender.tab.url;
+      if (sender.tab?.url) payload.page_url = sender.tab.url;
       payload.url = buffer.manifestUrl;
       delete payload.format_id;
       

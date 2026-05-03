@@ -694,6 +694,15 @@ function sanitizePageTitle() {
     raw = document.title;
   }
 
+  // 3. Fallback to URL slug if generic
+  if (!raw || typeof raw !== "string" || raw.trim().toLowerCase() === "cloud native base camp") {
+    const pathParts = window.location.pathname.split("/").filter(Boolean);
+    if (pathParts.length > 0) {
+      const slug = pathParts[pathParts.length - 1];
+      raw = slug.replace(/-/g, " ").replace(/\b\w/g, char => char.toUpperCase());
+    }
+  }
+
   if (!raw || typeof raw !== "string") return null;
 
   const suffixes = [
