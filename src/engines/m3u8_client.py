@@ -129,6 +129,7 @@ class M3u8Client:
             "--save-name", save_name,
             "--auto-select",
             "--del-after-done",
+            "--thread-count", "16",
             "-M", "format=mp4",  # Force mux audio+video into a single .mp4
         ]
 

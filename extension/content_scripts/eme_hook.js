@@ -212,30 +212,15 @@
       capturedLicenseUrl = url;
       capturedLicenseHeaders = extractHeaders(headers);
 
-      // --- NEW AGGRESSIVE BODY LOGGING ---
-      let debugBody = null;
+      // --- AGGRESSIVE BODY LOGGING (REDACTED FOR PROD) ---
       let bodyType = typeof body;
       
-      if (body instanceof ArrayBuffer || body instanceof Uint8Array) {
+      if (body instanceof ArrayBuffer || body instanceof Uint8Array || body instanceof DataView) {
         const len = body.byteLength || body.length;
         bodyType = `ArrayBuffer/Uint8Array (${len} bytes)`;
-        debugBody = arrayBufferToBase64(body);
-        try {
-          const bodyStr = new TextDecoder().decode(body);
-          console.log(`${LOG} 🐛 [DEBUG] Body decoded as string:\n${bodyStr}`);
-        } catch (e) {}
-      } else if (body instanceof Blob) {
-         bodyType = `Blob (${body.size} bytes)`;
-      } else if (body instanceof FormData) {
-         bodyType = "FormData";
-      } else {
-         debugBody = typeof body === "string" ? body : JSON.stringify(body);
       }
 
-      console.log(`${LOG} 🐛 [DEBUG] License Body Type: ${bodyType}`);
-      if (debugBody) {
-        console.log(`${LOG} 🐛 [DEBUG] License Body Content (base64/string):\n${debugBody}`);
-      }
+      console.log(`${LOG} 🐛 License Body Type: ${bodyType}`);
       // ------------------------------------
 
       if (body) {
@@ -387,12 +372,9 @@
 
   const originalUpdate = MediaKeySession.prototype.update;
   MediaKeySession.prototype.update = async function (response) {
-    console.log(`${LOG} 🔍 MediaKeySession.update() called! Response size: ${response.byteLength || response.length} bytes`);
-
     // Attempt 1: ClearKey JSON format {keys: [{kid, k}]}
     try {
       const str = new TextDecoder().decode(response);
-      console.log(`${LOG} 🔍 License response as string (first 200): ${str.substring(0, 200)}`);
       const json = JSON.parse(str);
       if (json.keys) {
         const keysList = [];

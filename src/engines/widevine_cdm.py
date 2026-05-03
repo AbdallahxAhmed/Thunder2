@@ -110,12 +110,6 @@ class WidevineCDM:
                 len(challenge),
                 extra={"event": "cdm.challenge_sent"},
             )
-            
-            logger.info(
-                "EXACT LICENSE HEADERS BEING SENT:\n%s",
-                headers,
-                extra={"event": "cdm.headers_debug"}
-            )
 
             # Send challenge to license server
             response = requests.post(

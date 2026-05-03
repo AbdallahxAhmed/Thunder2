@@ -681,7 +681,19 @@ function setupGlobalInteractions() {
 }
 
 function sanitizePageTitle() {
-  let raw = document.title;
+  let raw = "";
+  
+  // 1. Try to find a prominent h1 title (often the course or video name)
+  const h1 = document.querySelector("h1");
+  if (h1 && h1.innerText && h1.innerText.trim()) {
+    raw = h1.innerText.trim();
+  }
+  
+  // 2. Fallback to document.title
+  if (!raw) {
+    raw = document.title;
+  }
+
   if (!raw || typeof raw !== "string") return null;
 
   const suffixes = [
