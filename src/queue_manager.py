@@ -40,10 +40,32 @@ class QueueManager:
         self._db_path = db_path  # Will fallback to settings.db_path in db.py if None
         self._hot_cache: Dict[str, ActiveJobState] = {}
         self._lock = asyncio.Lock()
+        self._queue_wakeup_event = asyncio.Event()
+        self._scheduler_task: Optional[asyncio.Task] = None
+        
+        # Concurrency limits loaded from DB
+        self._global_limit = 8
+        self._engine_limits = {"aria2": 4, "ytdlp": 3, "m3u8": 2}
+
+    async def _load_settings(self):
+        """Read concurrency limits from settings table."""
+        async with get_db(self._db_path) as db:
+            cursor = await db.execute("SELECT key, value FROM settings WHERE key LIKE '%limit%' OR key = 'global_max_concurrent'")
+            rows = await cursor.fetchall()
+            
+            for row in rows:
+                key, val = row["key"], row["value"]
+                if key == "global_max_concurrent":
+                    self._global_limit = int(val)
+                elif key.startswith("engine_limit_"):
+                    engine = key.replace("engine_limit_", "")
+                    self._engine_limits[engine] = int(val)
 
     async def init(self):
         """Initialize database and load non-terminal jobs into Hot Cache."""
         await init_db(self._db_path)
+        await self._load_settings()
+        
         async with get_db(self._db_path) as db:
             cursor = await db.execute(
                 "SELECT * FROM jobs WHERE status NOT IN (?, ?)",
@@ -68,6 +90,86 @@ class QueueManager:
                     title=row["title"]
                 )
                 self._hot_cache[state.job_id] = state
+
+        # Start scheduler loop
+        if not self._scheduler_task:
+            self._scheduler_task = asyncio.create_task(self._scheduler_loop())
+            self._queue_wakeup_event.set()
+
+    def _count_active_slots(self) -> tuple[int, Dict[str, int]]:
+        """Count DOWNLOADING jobs globally and per-engine."""
+        global_active = 0
+        engine_active = {"aria2": 0, "ytdlp": 0, "m3u8": 0}
+        
+        for state in self._hot_cache.values():
+            if state.status == DownloadStatus.DOWNLOADING:
+                global_active += 1
+                if state.engine in engine_active:
+                    engine_active[state.engine] += 1
+                    
+        return global_active, engine_active
+
+    async def _execute_download(self, job_id: str):
+        """Placeholder for Phase 5 engine execution."""
+        await self.update_job(job_id, status=DownloadStatus.DOWNLOADING)
+
+    async def _promote_next(self):
+        """Query QUEUED jobs and promote them up to available slots."""
+        # Reload settings just in case they changed
+        await self._load_settings()
+        
+        async with self._lock:
+            global_active, engine_active = self._count_active_slots()
+            
+            if global_active >= self._global_limit:
+                return []
+                
+            async with get_db(self._db_path) as db:
+                cursor = await db.execute(
+                    "SELECT id, engine FROM jobs WHERE status = ? ORDER BY priority DESC, created_at ASC",
+                    (DownloadStatus.QUEUED.value,)
+                )
+                queued_jobs = await cursor.fetchall()
+
+        # Execute promotions outside the lock to avoid deadlocks when update_job is called
+        jobs_to_promote = []
+        for row in queued_jobs:
+            if global_active >= self._global_limit:
+                break
+                
+            job_id = row["id"]
+            engine = row["engine"]
+            
+            engine_limit = self._engine_limits.get(engine, 0)
+            if engine_active.get(engine, 0) >= engine_limit:
+                continue
+                
+            jobs_to_promote.append(job_id)
+            global_active += 1
+            if engine in engine_active:
+                engine_active[engine] += 1
+                
+        for job_id in jobs_to_promote:
+            state = await self.get_job(job_id)
+            if state and state.status == DownloadStatus.QUEUED:
+                await self._execute_download(job_id)
+
+    async def _scheduler_loop(self):
+        """Background task evaluating the queue."""
+        while True:
+            await self._queue_wakeup_event.wait()
+            self._queue_wakeup_event.clear()
+            try:
+                await self._promote_next()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                # In production, we'd log this.
+                pass
+
+    async def _on_job_finished(self):
+        """Called when a job reaches a terminal/paused state."""
+        self._queue_wakeup_event.set()
 
     async def create_job(self, job_id: str, url: str, engine: str, **kwargs) -> ActiveJobState:
         """Create a job in SQLite and add to Hot Cache."""
@@ -100,36 +202,41 @@ class QueueManager:
                 **kwargs
             )
             self._hot_cache[job_id] = state
-            return state
+            
+        self._queue_wakeup_event.set()
+        return state
 
     async def get_job(self, job_id: str) -> Optional[ActiveJobState]:
         """Get job from Hot Cache, fallback to SQLite for terminal jobs."""
         async with self._lock:
-            if job_id in self._hot_cache:
-                return self._hot_cache[job_id]
+            return await self._get_job_unlocked(job_id)
+
+    async def _get_job_unlocked(self, job_id: str) -> Optional[ActiveJobState]:
+        if job_id in self._hot_cache:
+            return self._hot_cache[job_id]
+            
+        async with get_db(self._db_path) as db:
+            cursor = await db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+            row = await cursor.fetchone()
+            if not row:
+                return None
                 
-            async with get_db(self._db_path) as db:
-                cursor = await db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
-                row = await cursor.fetchone()
-                if not row:
-                    return None
-                    
-                return ActiveJobState(
-                    job_id=row["id"],
-                    url=row["url"],
-                    engine=row["engine"],
-                    status=DownloadStatus(row["status"]),
-                    created_at=datetime.fromisoformat(row["created_at"].replace("Z", "+00:00")),
-                    updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00")),
-                    progress=row["progress"],
-                    speed=row["speed"],
-                    eta=row["eta"],
-                    output_path=row["output_path"],
-                    file_size=row["file_size"],
-                    error=row["error"],
-                    group_id=row["group_id"],
-                    title=row["title"]
-                )
+            return ActiveJobState(
+                job_id=row["id"],
+                url=row["url"],
+                engine=row["engine"],
+                status=DownloadStatus(row["status"]),
+                created_at=datetime.fromisoformat(row["created_at"].replace("Z", "+00:00")),
+                updated_at=datetime.fromisoformat(row["updated_at"].replace("Z", "+00:00")),
+                progress=row["progress"],
+                speed=row["speed"],
+                eta=row["eta"],
+                output_path=row["output_path"],
+                file_size=row["file_size"],
+                error=row["error"],
+                group_id=row["group_id"],
+                title=row["title"]
+            )
 
     async def update_job(self, job_id: str, **kwargs) -> Optional[ActiveJobState]:
         """Update job in cache and optionally SQLite.
@@ -140,7 +247,7 @@ class QueueManager:
         async with self._lock:
             state = self._hot_cache.get(job_id)
             if not state:
-                state = await self.get_job(job_id)
+                state = await self._get_job_unlocked(job_id)
                 if not state:
                     return None
                     
@@ -171,10 +278,17 @@ class QueueManager:
                     
             # Terminal states should be removed from Hot Cache
             if state.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED) and job_id in self._hot_cache:
-                # But wait, the spec says terminal jobs are removed from cache.
                 del self._hot_cache[job_id]
                 
-            return state
+        # Trigger scheduler if state changed to a terminal/paused state
+        if db_write_required and "status" in db_updates:
+            new_status = db_updates["status"]
+            if new_status in (DownloadStatus.COMPLETED.value, DownloadStatus.FAILED.value, DownloadStatus.PAUSED.value, DownloadStatus.CANCELLED.value):
+                await self._on_job_finished()
+            elif new_status == DownloadStatus.QUEUED.value:
+                self._queue_wakeup_event.set()
+                
+        return state
 
     async def list_jobs(self, limit: int = 50, offset: int = 0, status: Optional[str] = None, engine: Optional[str] = None, group_id: Optional[str] = None) -> List[ActiveJobState]:
         """List active jobs from cache and database."""
@@ -234,6 +348,15 @@ class QueueManager:
                 await db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
                 await db.commit()
 
+    async def shutdown(self):
+        """Shutdown the background scheduler task."""
+        if self._scheduler_task:
+            self._scheduler_task.cancel()
+            try:
+                await self._scheduler_task
+            except asyncio.CancelledError:
+                pass
+            self._scheduler_task = None
 
 # Global singleton instance
 queue_manager = QueueManager()

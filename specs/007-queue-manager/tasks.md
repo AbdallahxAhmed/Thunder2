@@ -87,18 +87,18 @@
 
 ### Tests for User Story 2
 
-- [ ] T021 [P] [US2] Write unit test for scheduler slot counting — verify global and per-engine limit enforcement in `tests/test_queue_manager.py`
-- [ ] T022 [P] [US2] Write test for event-driven wake — verify scheduler wakes on `asyncio.Event.set()` and promotes jobs in FIFO order in `tests/test_queue_manager.py`
-- [ ] T023 [P] [US2] Write test for dynamic limit updates — change settings, verify scheduler uses new limits on next evaluation in `tests/test_queue_manager.py`
+- [x] T021 [P] [US2] Write unit test for scheduler slot counting — verify global and per-engine limit enforcement in `tests/test_queue_manager.py`
+- [x] T022 [P] [US2] Write test for event-driven wake — verify scheduler wakes on `asyncio.Event.set()` and promotes jobs in FIFO order in `tests/test_queue_manager.py`
+- [x] T023 [P] [US2] Write test for dynamic limit updates — change settings, verify scheduler uses new limits on next evaluation in `tests/test_queue_manager.py`
 
 ### Implementation for User Story 2
 
-- [ ] T024 [US2] Implement `QueueManager._load_settings()` in `src/queue_manager.py` — read concurrency limits from `settings` table into instance vars
-- [ ] T025 [US2] Implement `QueueManager._count_active_slots()` in `src/queue_manager.py` — count DOWNLOADING jobs globally and per-engine from Hot Cache
-- [ ] T026 [US2] Implement `QueueManager._promote_next()` in `src/queue_manager.py` — query QUEUED jobs ordered by priority DESC, created_at ASC; promote up to available slots; call `_execute_download()` for each
-- [ ] T027 [US2] Implement `QueueManager._scheduler_loop()` in `src/queue_manager.py` — `async` task that loops on `asyncio.Event.wait()`, calls `_promote_next()`, clears event
-- [ ] T028 [US2] Implement `QueueManager._on_job_finished()` in `src/queue_manager.py` — called when any job reaches terminal/paused state; frees slot, fires `_scheduler_event.set()`
-- [ ] T029 [US2] Wire scheduler startup in `QueueManager.init()` — create `asyncio.create_task(_scheduler_loop())`, initial `_scheduler_event.set()` to evaluate queue on boot
+- [x] T024 [US2] Implement `QueueManager._load_settings()` in `src/queue_manager.py` — read concurrency limits from `settings` table into instance vars
+- [x] T025 [US2] Implement `QueueManager._count_active_slots()` in `src/queue_manager.py` — count DOWNLOADING jobs globally and per-engine from Hot Cache
+- [x] T026 [US2] Implement `QueueManager._promote_next()` in `src/queue_manager.py` — query QUEUED jobs ordered by priority DESC, created_at ASC; promote up to available slots; call `_execute_download()` for each
+- [x] T027 [US2] Implement `QueueManager._scheduler_loop()` in `src/queue_manager.py` — `async` task that loops on `asyncio.Event.wait()`, calls `_promote_next()`, clears event
+- [x] T028 [US2] Implement `QueueManager._on_job_finished()` in `src/queue_manager.py` — called when any job reaches terminal/paused state; frees slot, fires `_scheduler_event.set()`
+- [x] T029 [US2] Wire scheduler startup in `QueueManager.init()` — create `asyncio.create_task(_scheduler_loop())`, initial `_scheduler_event.set()` to evaluate queue on boot
 
 **Checkpoint**: Scheduler enforces limits, event-driven with zero polling. Downloads are promoted in FIFO order.
 

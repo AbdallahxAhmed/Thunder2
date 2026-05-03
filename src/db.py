@@ -141,16 +141,21 @@ async def get_db(db_path: str | None = None) -> AsyncIterator[AsyncConnection]:
     """
     path = db_path or settings.db_path
     
+    def dict_factory(cursor, row):
+        fields = [column[0] for column in cursor.description]
+        return {key: value for key, value in zip(fields, row)}
+
     def _connect():
         # check_same_thread=False is needed since we run queries in different threads via asyncio.to_thread
-        return sqlite3.connect(path, check_same_thread=False)
+        conn = sqlite3.connect(path, timeout=30.0, check_same_thread=False)
+        conn.row_factory = dict_factory
+        return conn
 
     conn = await asyncio.to_thread(_connect)
     db = AsyncConnection(conn)
     try:
         await db.execute("PRAGMA journal_mode=WAL;")
         await db.execute("PRAGMA foreign_keys=ON;")
-        db.row_factory = sqlite3.Row
         yield db
     finally:
         await db.close()

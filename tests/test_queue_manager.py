@@ -19,7 +19,8 @@ async def qm(tmp_path):
     await init_db(db_path)
     qm_instance = QueueManager(db_path=db_path)
     await qm_instance.init()
-    return qm_instance
+    yield qm_instance
+    await qm_instance.shutdown()
 
 
 @pytest.mark.asyncio
@@ -127,3 +128,87 @@ async def test_init_loads_non_terminal_jobs(tmp_path):
     # All 3 should be in database
     jobs = await qm2.list_jobs()
     assert len(jobs) == 3
+    
+    await qm1.shutdown()
+    await qm2.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_slot_counting_and_promotion(qm):
+    """Test that jobs are automatically promoted to DOWNLOADING up to the limit."""
+    # The default test DB limits are aria2: 4
+    jobs = []
+    for _ in range(5):
+        job_id = str(uuid4())
+        await qm.create_job(job_id, "https://example.com", "aria2")
+        jobs.append(job_id)
+        
+    # Yield to let scheduler loop run
+    await asyncio.sleep(0.1)
+    
+    # Check states
+    downloading = 0
+    queued = 0
+    for job_id in jobs:
+        state = await qm.get_job(job_id)
+        if state.status == DownloadStatus.DOWNLOADING:
+            downloading += 1
+        elif state.status == DownloadStatus.QUEUED:
+            queued += 1
+            
+    assert downloading == 4  # aria2 limit
+    assert queued == 1
+
+
+@pytest.mark.asyncio
+async def test_scheduler_event_driven_wake(qm):
+    """Test that a terminal state wakes the scheduler and promotes the next job."""
+    # Fill the aria2 slots
+    jobs = []
+    for _ in range(5):
+        job_id = str(uuid4())
+        await qm.create_job(job_id, "https://example.com", "aria2")
+        jobs.append(job_id)
+        
+    await asyncio.sleep(0.1)
+    
+    state_last = await qm.get_job(jobs[4])
+    assert state_last.status == DownloadStatus.QUEUED
+    
+    # Finish the first job
+    await qm.update_job(jobs[0], status=DownloadStatus.COMPLETED)
+    
+    # Wait for scheduler to wake up
+    await asyncio.sleep(0.1)
+    
+    # The 5th job should now be downloading
+    state_last = await qm.get_job(jobs[4])
+    assert state_last.status == DownloadStatus.DOWNLOADING
+
+
+@pytest.mark.asyncio
+async def test_scheduler_dynamic_limits(qm):
+    """Test that updating settings changes the promotion limit dynamically."""
+    from src.db import get_db
+    
+    # Lower aria2 limit to 2
+    async with get_db(qm._db_path) as db:
+        await db.execute("UPDATE settings SET value = '2' WHERE key = 'engine_limit_aria2'")
+        await db.commit()
+        
+    jobs = []
+    for _ in range(4):
+        job_id = str(uuid4())
+        await qm.create_job(job_id, "https://example.com", "aria2")
+        jobs.append(job_id)
+        
+    await asyncio.sleep(0.1)
+    
+    downloading = 0
+    for job_id in jobs:
+        state = await qm.get_job(job_id)
+        if state.status == DownloadStatus.DOWNLOADING:
+            downloading += 1
+            
+    assert downloading == 2  # New limit
+
