@@ -1,6 +1,7 @@
 :host {
-  all: initial; /* Ensure isolated styles */
-  
+  all: initial;
+  /* Ensure isolated styles */
+
   --bg-main: #0F172A;
   --bg-card: #1E293B;
   --bg-card-hover: #253349;
@@ -17,18 +18,20 @@
   --gold-glow: rgba(245, 158, 11, 0.15);
   --cyan: #22D3EE;
   --cyan-glow: rgba(34, 211, 238, 0.12);
-  
+
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 #uhdd-container {
   pointer-events: auto;
-  position: absolute; /* Draggable Ghost uses absolute positioning via JS */
+  position: absolute;
+  /* Draggable Ghost uses absolute positioning via JS */
   z-index: 2147483647;
   color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  align-items: flex-end; /* Dropdown aligned right of button */
+  align-items: flex-end;
+  /* Dropdown aligned right of button */
 }
 
 /* ─── Floating Button ────────────────────────────────────────────── */
@@ -149,7 +152,8 @@
   outline: none;
   font-family: inherit;
   font-size: 13px;
-  width: 100%; /* Take full width of dropdown */
+  width: 100%;
+  /* Take full width of dropdown */
 }
 
 .format-btn:hover {
@@ -159,7 +163,9 @@
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.12);
 }
 
-.format-btn:active { transform: translateY(0); }
+.format-btn:active {
+  transform: translateY(0);
+}
 
 .format-btn:disabled {
   opacity: 0.5;
@@ -270,14 +276,25 @@
   flex-shrink: 0;
 }
 
-.format-btn:hover .quality-arrow { transform: translateY(2px); }
+.format-btn:hover .quality-arrow {
+  transform: translateY(2px);
+}
 
 /* ─── Custom Scrollbar ────────────────────────────────────────────── */
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 ::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
