@@ -4,9 +4,24 @@
   // ─── Known License Server Patterns ────────────────────────────────────
   // Add URL substrings or hostnames that identify Widevine license endpoints.
   // Detection fires on EITHER a URL match OR a binary CDM challenge signature.
+  // Domain-specific DRM hints (e.g., Al Jazeera streams).
+  const DOMAIN_DRM_PATTERNS = [
+    "aljazeera",
+  ];
+
+  const DRM_HINT_PATTERNS = [
+    "widevine",
+    "/license",
+    "/licence",
+    "drm",
+    "cenc",
+    ...DOMAIN_DRM_PATTERNS,
+  ];
+
   const LICENSE_URL_PATTERNS = [
     "shield-drm.imggaming.com",
     "/api/v2/license",
+    ...DRM_HINT_PATTERNS,
   ];
 
   // Headers we MUST capture from the license request (case-insensitive match)
@@ -22,6 +37,8 @@
   let capturedPSSH = null;        // base64-encoded PSSH
   let capturedLicenseUrl = null;
   let capturedLicenseHeaders = {};
+  let drmDetected = false;
+  let drmHintDispatched = false;
   let dispatched = false;
 
   // ─── Helpers ──────────────────────────────────────────────────────────
@@ -49,6 +66,12 @@
     if (!url) return false;
     const lower = url.toLowerCase();
     return LICENSE_URL_PATTERNS.some((p) => lower.includes(p));
+  }
+
+  function isLikelyDrmManifestUrl(url) {
+    if (!url) return false;
+    const lower = url.toLowerCase();
+    return DRM_HINT_PATTERNS.some((p) => lower.includes(p));
   }
 
   function sanitizeTitle(raw) {
@@ -88,6 +111,14 @@
     return result;
   }
 
+  function resolveFetchUrl(input) {
+    if (typeof input === "string") return input;
+    if (input instanceof Request) return input.url || "";
+    if (input instanceof URL) return input.toString();
+    if (input && typeof input.url === "string") return input.url;
+    return "";
+  }
+
   function syncWithDaemon() {
     // Require manifest + PSSH + license URL — dispatch once
     if (capturedManifestUrl && capturedPSSH && capturedLicenseUrl && !dispatched) {
@@ -115,9 +146,23 @@
           licenseUrl: capturedLicenseUrl,
           licenseHeaders: capturedLicenseHeaders,
           title: title,
+          drmHint: true,
         },
       }));
     }
+  }
+
+  function dispatchDrmHintIfNeeded() {
+    if (!capturedManifestUrl || dispatched || drmHintDispatched) return;
+    drmHintDispatched = true;
+    window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
+      detail: {
+        type: "manifest",
+        url: capturedManifestUrl,
+        title: getPageTitle(),
+        drmHint: true,
+      },
+    }));
   }
 
   // ─── License Request Detection (shared logic) ─────────────────────────
@@ -133,6 +178,8 @@
     if (urlMatch || bodyMatch) {
       capturedLicenseUrl = url;
       capturedLicenseHeaders = extractHeaders(headers);
+      drmDetected = true;
+      dispatchDrmHintIfNeeded();
 
       const reason = urlMatch && bodyMatch ? "URL + challenge"
                    : urlMatch             ? "URL pattern"
@@ -151,7 +198,8 @@
 
   const originalFetch = window.fetch;
   window.fetch = async function (input, init) {
-    const url = typeof input === "string" ? input : input && input.url ? input.url : "";
+    const request = input instanceof Request ? input : null;
+    const url = resolveFetchUrl(input);
 
     // Capture .mpd / .m3u8 manifest URLs
     if (url.includes(".mpd") || url.includes(".m3u8")) {
@@ -159,8 +207,14 @@
       console.log(`${LOG} 📡 Manifest captured: ${url}`);
 
       if (url.includes(".m3u8")) {
+        const drmHint = drmDetected || isLikelyDrmManifestUrl(url);
         window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
-          detail: { type: "manifest", url: url, title: getPageTitle() },
+          detail: {
+            type: "manifest",
+            url: url,
+            title: getPageTitle(),
+            drmHint,
+          },
         }));
       } else {
         syncWithDaemon();
@@ -168,15 +222,37 @@
     }
 
     // Detect license server requests
-    if (init) {
-      let bodyBytes = init.body || null;
+    let bodyBytes = null;
+    let mergedHeaders = null;
+
+    if (init && init.body) {
+      bodyBytes = init.body;
       if (bodyBytes instanceof Blob) {
         try { bodyBytes = await bodyBytes.arrayBuffer(); } catch (_) {}
       }
-      handlePotentialLicenseRequest(url, init.headers, bodyBytes);
-    } else if (isKnownLicenseUrl(url)) {
-      // GET-based license URL (rare but possible) — no body to check
-      handlePotentialLicenseRequest(url, null, null);
+    } else if (request) {
+      const requestMethod = request.method;
+      if (requestMethod !== "GET" && requestMethod !== "HEAD") {
+        try {
+          bodyBytes = await request.clone().arrayBuffer();
+        } catch (_) {}
+      }
+    }
+
+    const headerSources = [request?.headers, init?.headers].filter(Boolean);
+    if (headerSources.length) {
+      const combined = headerSources.reduce(
+        (acc, src) => Object.assign(acc, extractHeaders(src)),
+        {},
+      );
+      if (Object.keys(combined).length > 0) {
+        mergedHeaders = combined;
+      }
+    }
+
+    const hasHeaders = Boolean(mergedHeaders);
+    if (bodyBytes || hasHeaders || isKnownLicenseUrl(url)) {
+      handlePotentialLicenseRequest(url, mergedHeaders, bodyBytes);
     }
 
     return originalFetch.apply(this, arguments);
@@ -198,8 +274,9 @@
       console.log(`${LOG} 📡 Manifest captured (XHR): ${url}`);
 
       if (url.includes(".m3u8")) {
+        const drmHint = drmDetected || isLikelyDrmManifestUrl(url);
         window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
-          detail: { type: "manifest", url: url },
+          detail: { type: "manifest", url: url, drmHint },
         }));
       } else {
         syncWithDaemon();
@@ -227,6 +304,8 @@
   MediaKeySession.prototype.generateRequest = async function (initDataType, initData) {
     const psshBase64 = arrayBufferToBase64(initData);
     capturedPSSH = psshBase64;
+    drmDetected = true;
+    dispatchDrmHintIfNeeded();
     console.log(`${LOG} 🛡️ PSSH captured (${initData.byteLength} bytes, type: ${initDataType})`);
     syncWithDaemon();
     return originalGenerateRequest.apply(this, arguments);

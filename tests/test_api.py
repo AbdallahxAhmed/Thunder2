@@ -62,6 +62,36 @@ class TestPostDownload:
         assert resp.status_code == 202
         assert resp.json()["engine"] == "m3u8"
 
+    async def test_pssh_license_routes_to_m3u8(self, async_client, mock_all_engines_available):
+        """A request with pssh + license_url should be routed to m3u8 engine."""
+        with patch("src.main._execute_download", new_callable=AsyncMock):
+            resp = await async_client.post(
+                "/api/download",
+                json={
+                    "url": "https://cdn.example.com/stream.mpd",
+                    "pssh": "base64pssh",
+                    "license_url": "https://license.example.com",
+                    "license_headers": {"authorization": "Bearer token"},
+                },
+            )
+
+        assert resp.status_code == 202
+        assert resp.json()["engine"] == "m3u8"
+
+    async def test_drm_hint_routes_to_m3u8(self, async_client, mock_all_engines_available):
+        """A request with drm_hint should be routed to m3u8 engine."""
+        with patch("src.main._execute_download", new_callable=AsyncMock):
+            resp = await async_client.post(
+                "/api/download",
+                json={
+                    "url": "https://cdn.example.com/stream.m3u8",
+                    "drm_hint": True,
+                },
+            )
+
+        assert resp.status_code == 202
+        assert resp.json()["engine"] == "m3u8"
+
     async def test_invalid_drm_keys_returns_422(self, async_client):
         """Invalid drm_keys format must fail validation."""
         resp = await async_client.post(
