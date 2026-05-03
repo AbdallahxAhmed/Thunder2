@@ -56,14 +56,14 @@
 
 ### Tests for User Story 1
 
-- [ ] T010 [P] [US1] Write unit tests for `QueueManager.create_job()`, `get_job()`, `update_job()`, `list_jobs()` in `tests/test_queue_manager.py`
-- [ ] T011 [P] [US1] Write test for Hot Cache sync — verify progress updates stay in-memory only, state transitions write to SQLite in `tests/test_queue_manager.py`
-- [ ] T012 [P] [US1] Write test for startup recovery — pre-populate SQLite, init QueueManager, verify Hot Cache loads non-terminal jobs in `tests/test_queue_manager.py`
+- [x] T010 [P] [US1] Write unit tests for `QueueManager.create_job()`, `get_job()`, `update_job()`, `list_jobs()` in `tests/test_queue_manager.py`
+- [x] T011 [P] [US1] Write test for Hot Cache sync — verify progress updates stay in-memory only, state transitions write to SQLite in `tests/test_queue_manager.py`
+- [x] T012 [P] [US1] Write test for startup recovery — pre-populate SQLite, init QueueManager, verify Hot Cache loads non-terminal jobs in `tests/test_queue_manager.py`
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Expand `DownloadStatus` enum in `src/models.py` — add `PAUSED = "paused"` and `CANCELLED = "cancelled"` values
-- [ ] T014 [US1] Create `src/queue_manager.py` — `QueueManager` class with `__init__`, `_hot_cache: dict`, `_lock: asyncio.Lock`, `_db_path: str`
+- [x] T013 [US1] Expand `DownloadStatus` enum in `src/models.py` — add `PAUSED = "paused"` and `CANCELLED = "cancelled"` values
+- [x] T014 [US1] Create `src/queue_manager.py` — `QueueManager` class with `__init__`, `_hot_cache: dict`, `_lock: asyncio.Lock`, `_db_path: str`
 - [ ] T015 [US1] Implement `QueueManager.init()` in `src/queue_manager.py` — call `init_db()`, load non-terminal jobs from SQLite into Hot Cache
 - [ ] T016 [US1] Implement `QueueManager.create_job()` in `src/queue_manager.py` — INSERT into SQLite, add to Hot Cache, return `DownloadJob`
 - [ ] T017 [US1] Implement `QueueManager.get_job()` in `src/queue_manager.py` — read from Hot Cache first, fallback to SQLite for terminal jobs

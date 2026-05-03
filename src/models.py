@@ -20,6 +20,8 @@ class DownloadStatus(str, enum.Enum):
     DOWNLOADING = "downloading"
     COMPLETED = "completed"
     FAILED = "failed"
+    PAUSED = "paused"
+    CANCELLED = "cancelled"
 
 
 # ---------------------------------------------------------------------------
@@ -118,9 +120,22 @@ class DownloadJob(BaseModel):
     status: DownloadStatus = DownloadStatus.QUEUED
     progress: Optional[float] = None
     speed: Optional[str] = None
+    eta: Optional[int] = None
     output_path: Optional[str] = None
     file_size: Optional[int] = None
     error: Optional[str] = None
+    group_id: Optional[str] = None
+    format_id: Optional[str] = None
+    title: Optional[str] = None
+    cookies: Optional[str] = None
+    user_agent: Optional[str] = None
+    referer: Optional[str] = None
+    page_url: Optional[str] = None
+    drm_keys: Optional[str] = None
+    pssh: Optional[str] = None
+    license_url: Optional[str] = None
+    priority: int = 0
+    retry_count: int = 0
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -128,6 +143,19 @@ class DownloadJob(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc)
     )
     aria2_gid: Optional[str] = None
+
+class DownloadGroup(BaseModel):
+    """Tracks a group of download jobs (e.g., a playlist)."""
+    id: str
+    name: str
+    source_url: Optional[str] = None
+    status: str = "active"
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
 
 # ---------------------------------------------------------------------------
