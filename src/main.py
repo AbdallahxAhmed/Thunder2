@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     _engine_health = await asyncio.to_thread(check_all_engines)
     available = [e for e in _engine_health if e.available]
     logger.info(
-        "UHDD started — %d/%d engines available",
+        "Thunder started — %d/%d engines available",
         len(available),
         len(_engine_health),
         extra={"event": "daemon.startup"},
@@ -73,14 +73,14 @@ async def lifespan(app: FastAPI):
 
     _start_time = time.time()
     yield
-    logger.info("UHDD shutting down", extra={"event": "daemon.shutdown"})
+    logger.info("Thunder shutting down", extra={"event": "daemon.shutdown"})
 
 
 # ── App ───────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Dark Downloader — UHDD",
-    description="Unified Headless Download Daemon",
+    title="Thunder",
+    description="Universal Headless DRM Downloader",
     version="0.1.0",
     lifespan=lifespan,
 )

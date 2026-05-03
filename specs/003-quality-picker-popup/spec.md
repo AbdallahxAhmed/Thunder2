@@ -2,8 +2,10 @@
 
 **Feature Branch**: `004-quality-picker-popup`
 **Created**: 2026-04-27
-**Status**: Draft
+**Status**: Deprecated / Removed
 **Input**: User description: "The Quality Picker Popup — a premium dark-themed browser extension popup that queries available media formats via yt-dlp and allows users to select a specific quality before dispatching the download."
+
+> **DEPRECATION NOTICE**: The extension popup UI was officially removed in v3.14.4. The architecture has fully migrated to a Headless Extension + Hybrid Floating Pill UI (injected via closed Shadow DOM) for a more seamless, zero-context-switching user experience. This spec remains for historical reference.
 
 ## User Scenarios & Testing
 

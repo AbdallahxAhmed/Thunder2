@@ -1,4 +1,4 @@
-# Dark Downloader (UHDD) — Unified Headless Download Daemon
+# Thunder — Universal Headless DRM Downloader
 
 > **v3.14.4** — Production-stable DRM decryption, CDN bypass, and intelligent naming pipeline.
 
@@ -51,7 +51,7 @@ The system operates as a three-tier hybrid pipeline:
                                     HTTP POST /api/download
                                                 │
 ┌───────────────────────────────────────────────▼─────────────┐
-│               UHDD Daemon (FastAPI @ :8000)                  │
+│               Thunder Daemon (FastAPI @ :8000)               │
 │                                                             │
 │  ┌──────────┐  ┌──────────────┐  ┌────────────────────────┐ │
 │  │  Router  │  │ Job Manager  │  │   Engine Registry      │ │
@@ -309,7 +309,7 @@ Sensitive data (Authorization headers, DRM keys) are redacted in production logs
 ### Phase 2: Frontend Progress UI
 - [ ] Real-time download progress via WebSocket or Server-Sent Events (SSE)
 - [ ] Progress bars in the floating pill UI (percentage, speed, ETA)
-- [ ] Download history panel in the popup
+- [ ] Download history panel in the floating UI
 - [ ] Toast notifications for completion/failure
 
 ### Phase 3: Pause/Resume
