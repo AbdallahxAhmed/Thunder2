@@ -47,51 +47,7 @@ function isCacheFresh(entry) {
   return entry && entry.status === "ready" && (Date.now() - entry.ts) < CACHE_TTL_MS;
 }
 
-// Domains eligible for pre-fetching (mirrors router.py KNOWN_MEDIA_DOMAINS)
-const PREFETCH_DOMAINS = new Set([
-  "youtube.com", "www.youtube.com", "youtu.be", "m.youtube.com",
-  "music.youtube.com", "twitter.com", "www.twitter.com",
-  "x.com", "www.x.com", "vimeo.com", "www.vimeo.com",
-  "dailymotion.com", "www.dailymotion.com", "twitch.tv",
-  "www.twitch.tv", "clips.twitch.tv", "tiktok.com",
-  "www.tiktok.com", "instagram.com", "www.instagram.com",
-  "soundcloud.com", "www.soundcloud.com", "reddit.com",
-  "www.reddit.com", "v.redd.it", "facebook.com",
-  "www.facebook.com", "fb.watch",
-]);
 
-/**
- * Fetch format info from the daemon and populate the cache.
- * Returns the cached entry or null on failure.
- */
-async function prefetchFormats(tabId, url, drmHint = false) {
-  // Don't re-fetch if we already have a fresh entry for this URL
-  const existing = formatCache.get(tabId);
-  if (isCacheMatch(existing, url, drmHint) && existing.status === "fetching") {
-    return; // another fetch is already in flight
-  }
-  if (isCacheMatch(existing, url, drmHint) && isCacheFresh(existing)) {
-    return; // still fresh
-  }
-
-  // Mark as fetching so concurrent opens don't duplicate
-  formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
-  console.log(`${LOG} Pre-fetching formats for tab ${tabId}: ${url.substring(0, 60)}…`);
-
-  try {
-    const resp = await fetch(
-      `${DAEMON_INFO_URL}?url=${encodeURIComponent(url)}&drm_hint=${drmHint ? "true" : "false"}`,
-      { signal: AbortSignal.timeout(30_000) }
-    );
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready", drmHint });
-    console.log(`${LOG} Pre-fetch complete for tab ${tabId} — ${data.options?.length || 0} options`);
-  } catch (err) {
-    console.warn(`${LOG} Pre-fetch failed for tab ${tabId}:`, err.message);
-    formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error", drmHint });
-  }
-}
 
 // ─── Dispatch to UHDD Daemon ──────────────────────────────────────────
 
@@ -168,56 +124,23 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // ── SPA URL change detection (e.g. YouTube client-side navigation) ──
-  // changeInfo.url fires when the tab's URL changes, even without a
-  // full page load.  Invalidate that specific tab's cache and re-fetch.
+  // SPA URL change — invalidate stale cache
   if (changeInfo.url && tab.url) {
     const cached = formatCache.get(tabId);
     if (cached && cached.url !== tab.url) {
       console.log(`${LOG} URL changed for tab ${tabId}, invalidating cache`);
       formatCache.delete(tabId);
     }
-    // Immediately try to pre-fetch for the new URL
-    // try {
-    //   const hostname = new URL(tab.url).hostname;
-    //   if (PREFETCH_DOMAINS.has(hostname)) {
-    //     prefetchFormats(tabId, tab.url);
-    //   }
-    // } catch (_) { /* invalid URL */ }
     return;
   }
 
   if (changeInfo.status === "loading") {
-    // Full navigation started — invalidate stale cache
     tabBuffers.delete(tabId);
     formatCache.delete(tabId);
   }
-
-  // ── Pre-fetch trigger (page finished loading) ──────────────────────
-  // if (changeInfo.status === "complete" && tab.url) {
-  //   try {
-  //     const hostname = new URL(tab.url).hostname;
-  //     if (PREFETCH_DOMAINS.has(hostname)) {
-  //       prefetchFormats(tabId, tab.url);
-  //     }
-  //   } catch (_) { /* invalid URL */ }
-  // }
 });
 
-// ── Pre-fetch on tab activation (switching between tabs) ─────────────
-// Ensures data is warm even when the user switches back to a media tab
-// that was loaded a while ago and whose cache may have expired.
-chrome.tabs.onActivated.addListener(async (activeInfo) => {
-  // const tabId = activeInfo.tabId;
-  // try {
-  //   const tab = await chrome.tabs.get(tabId);
-  //   if (!tab.url) return;
-  //   const hostname = new URL(tab.url).hostname;
-  //   if (PREFETCH_DOMAINS.has(hostname)) {
-  //     prefetchFormats(tabId, tab.url);
-  //   }
-  // } catch (_) { /* tab may have been closed */ }
-});
+
 
 // ─── Unified Message Handler ──────────────────────────────────────────
 
@@ -240,6 +163,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       buffer.pssh = message.pssh;
       buffer.licenseUrl = message.licenseUrl;
       buffer.licenseHeaders = message.licenseHeaders || {};
+      if (message.drmKeys) buffer.drmKeys = message.drmKeys;
       buffer.drmHint = true;
       if (message.title) buffer.title = message.title;
       // NOTE: NO dispatchToUHDD() — user must explicitly trigger download
@@ -248,7 +172,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // Handle messages from the popup or content script
-  if (message.type === "getFormats" || message.action === "GET_HYBRID_STREAMS") {
+  if (message.type === "getFormats" || message.action === "GET_HYBRID_STREAMS" || message.action === "PRE_WARM_URL") {
     const tabId = message.tabId ?? sender.tab?.id;
     // Prefer the tab's main-frame URL (sender.tab.url) over message.url.
     // When the message originates from an iframe, message.url is the iframe's
@@ -341,6 +265,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // keep channel open for async response
   }
 
+  // Handle instant raw stream request for predictive UI rendering
+  if (message.action === "GET_RAW_STREAM") {
+    const tabId = sender.tab?.id;
+    const buffer = tabBuffers.get(tabId);
+    if (buffer && buffer.manifestUrl) {
+      sendResponse({ ok: true, data: { url: buffer.manifestUrl, title: buffer.title } });
+    } else {
+      sendResponse({ ok: false });
+    }
+    return;
+  }
+
   // Handle download triggers from content script (Dumb UI enforcement)
   if (message.action === "TRIGGER_DOWNLOAD") {
     const payload = message.payload;
@@ -363,6 +299,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: false, error: "Raw stream buffer expired" });
         return true;
       }
+      if (sender.tab?.url) payload.page_url = sender.tab.url;
       payload.url = buffer.manifestUrl;
       delete payload.format_id;
       
@@ -371,8 +308,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         payload.license_url = buffer.licenseUrl;
         payload.license_headers = buffer.licenseHeaders || {};
       }
+      if (buffer.drmKeys) {
+        payload.drm_keys = buffer.drmKeys;
+      }
       if (buffer.drmHint) payload.drm_hint = true;
-      if (buffer.title) payload.title = buffer.title;
+      if (!payload.title && buffer.title) payload.title = buffer.title;
     }
 
     console.log(`${LOG} Triggering download from content script:`, payload);

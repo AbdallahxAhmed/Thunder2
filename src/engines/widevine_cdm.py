@@ -55,6 +55,7 @@ class WidevineCDM:
         pssh_b64: str,
         license_url: str,
         license_headers: dict[str, Any] | None = None,
+        video_url: str | None = None,
     ) -> list[str]:
         """Negotiate with a license server and return KID:KEY pairs.
 
@@ -63,6 +64,7 @@ class WidevineCDM:
             license_url: The license server URL captured from the page.
             license_headers: HTTP headers from the original license request
                              (Authorization tokens, cookies, etc.).
+            video_url: The original video URL to spoof Origin/Referer.
 
         Returns:
             A list of "KID:KEY" strings in lowercase hex.
@@ -73,6 +75,21 @@ class WidevineCDM:
         """
         cdm = self._ensure_cdm()
         headers = dict(license_headers or {})
+
+        header_keys_lower = {k.lower(): k for k in headers}
+        if "content-type" not in header_keys_lower:
+            headers["Content-Type"] = "application/octet-stream"
+
+        if video_url:
+            from urllib.parse import urlparse
+            parsed = urlparse(video_url)
+            origin = f"{parsed.scheme}://{parsed.netloc}"
+            if "user-agent" not in header_keys_lower:
+                headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            if "origin" not in header_keys_lower:
+                headers["Origin"] = origin
+            if "referer" not in header_keys_lower:
+                headers["Referer"] = video_url
 
         # Parse PSSH
         try:

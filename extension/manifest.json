@@ -5,7 +5,8 @@
   "description": "Intercepts DRM manifests (.mpd) and Widevine keys (KID:KEY), dispatching them to the local UHDD daemon.",
   "permissions": [
     "notifications",
-    "downloads"
+    "downloads",
+    "cookies"
   ],
   "host_permissions": [
     "*://*/*",
