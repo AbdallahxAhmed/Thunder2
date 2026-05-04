@@ -114,7 +114,7 @@ function getBuffer(tabId) {
 }
 
 // ─── Format Info Cache ────────────────────────────────────────────────
-// Keyed by tabId → { url, data, ts, status }
+// Keyed by exact url → { url, data, ts, status, drmHint }
 // status: "ready" | "fetching" | "error"
 
 const formatCache = new Map();
@@ -201,23 +201,11 @@ async function dispatchToThunder(tabId) {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabBuffers.delete(tabId);
-  formatCache.delete(tabId);
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // SPA URL change — invalidate stale cache
-  if (changeInfo.url && tab.url) {
-    const cached = formatCache.get(tabId);
-    if (cached && cached.url !== tab.url) {
-      console.log(`${LOG} URL changed for tab ${tabId}, invalidating cache`);
-      formatCache.delete(tabId);
-    }
-    return;
-  }
-
   if (changeInfo.status === "loading") {
     tabBuffers.delete(tabId);
-    formatCache.delete(tabId);
   }
 });
 
@@ -265,7 +253,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
 
-    const cached = formatCache.get(tabId);
+    const cached = formatCache.get(url);
     const buffer = tabBuffers.get(tabId);
     const hasRawStream = buffer && !!buffer.manifestUrl;
     const drmHint = buffer ? buffer.drmHint : false;
@@ -288,7 +276,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       console.log(`[THUNDER] Received PRE_WARM_URL, starting fetch for: ${url}`);
-      formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
+      formatCache.set(url, { url, data: null, ts: 0, status: "fetching", drmHint });
 
       getCookiesForUrl(url).then(cookieObjects => {
         const infoPayload = {
@@ -309,12 +297,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return resp.json();
           })
           .then(data => {
-            formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready", drmHint });
+            formatCache.set(url, { url, data, ts: Date.now(), status: "ready", drmHint });
             console.log(`[THUNDER] PRE_WARM: cached formats successfully for ${url}`);
           })
           .catch(err => {
             console.error(`[THUNDER] PRE_WARM failed completely for ${url}:`, err);
-            formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error", drmHint });
+            formatCache.set(url, { url, data: null, ts: Date.now(), status: "error", drmHint });
           });
       });
 
@@ -358,7 +346,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       let waited = 0;
       const poll = setInterval(() => {
         waited += 100;
-        const entry = formatCache.get(tabId);
+        const entry = formatCache.get(url);
         if (!entry || waited > 30_000) {
           clearInterval(poll);
           if (hasRawStream) sendHybridResponse(null, false);
@@ -389,7 +377,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     console.log(`${LOG} Format cache MISS for tab ${tabId}, fetching…`);
-    formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
+    formatCache.set(url, { url, data: null, ts: 0, status: "fetching", drmHint });
     
     getCookiesForUrl(url).then(cookieObjects => {
       // POST cookies as JSON body instead of header to avoid size limits
@@ -411,12 +399,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return resp.json();
         })
         .then(data => {
-          formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready", drmHint });
+          formatCache.set(url, { url, data, ts: Date.now(), status: "ready", drmHint });
           sendHybridResponse(data, false);
         })
         .catch(err => {
           console.error(`${LOG} /api/info failed:`, err);
-          formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error", drmHint });
+          formatCache.set(url, { url, data: null, ts: Date.now(), status: "error", drmHint });
           if (hasRawStream) sendHybridResponse(null, false);
           else sendResponse({ ok: false, error: err.message });
         });

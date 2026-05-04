@@ -960,44 +960,46 @@ function onSpaNavigation() {
 }
 
 // Signal 1: YouTube's custom navigation event (fastest for YouTube)
-window.addEventListener("yt-navigate-finish", onSpaNavigation);
+let isAwake = false;
 
-// Signal 2: Intercept pushState/replaceState (catches ALL SPA frameworks)
-const _origPushState = history.pushState;
-const _origReplaceState = history.replaceState;
-history.pushState = function(...args) {
-  console.log("[THUNDER] pushState intercepted:", args);
-  _origPushState.apply(this, args);
-  onSpaNavigation();
-};
-history.replaceState = function(...args) {
-  console.log("[THUNDER] replaceState intercepted:", args);
-  _origReplaceState.apply(this, args);
-  onSpaNavigation();
-};
+function wakeUp() {
+  if (isAwake) return;
+  isAwake = true;
+  console.log(`${LOG} Video detected. Waking up dormant script in ${window.location.href}`);
+  
+  // Signal 1: YouTube's custom navigation event (fastest for YouTube)
+  window.addEventListener("yt-navigate-finish", onSpaNavigation);
 
-// Signal 3: popstate for back/forward navigation
-window.addEventListener("popstate", onSpaNavigation);
-
-// Signal 4: Polling fallback — catches edge cases missed by all above
-setInterval(() => {
-  console.log("[THUNDER] SPA fallback polling tick, current URL:", window.location.href);
-  if (window.location.href !== _lastKnownUrl) {
+  // Signal 2: Intercept pushState/replaceState (catches ALL SPA frameworks)
+  const _origPushState = history.pushState;
+  const _origReplaceState = history.replaceState;
+  history.pushState = function(...args) {
+    _origPushState.apply(this, args);
     onSpaNavigation();
-  }
-}, 500);
+  };
+  history.replaceState = function(...args) {
+    _origReplaceState.apply(this, args);
+    onSpaNavigation();
+  };
 
-// Pill persistence: periodically check for orphaned video elements
-setInterval(() => {
-  const videos = document.querySelectorAll("video");
-  for (const v of videos) {
-    if (!pillRegistry.has(v)) {
-      const rect = v.getBoundingClientRect();
-      if (rect.width >= 150 && rect.height >= 150) {
-        processVideoElement(v);
-      }
-    }
-  }
-}, 2000);
+  // Signal 3: popstate for back/forward navigation
+  window.addEventListener("popstate", onSpaNavigation);
 
-init();
+  init();
+}
+
+function detectVideo(e) {
+  if (e && e.target && e.target.tagName === 'VIDEO') {
+    wakeUp();
+  }
+}
+
+// Stay dormant until a video is explicitly detected
+if (document.querySelector("video")) {
+  wakeUp();
+} else {
+  document.addEventListener("play", detectVideo, true);
+  document.addEventListener("playing", detectVideo, true);
+  document.addEventListener("loadedmetadata", detectVideo, true);
+  document.addEventListener("canplay", detectVideo, true);
+}
