@@ -73,10 +73,19 @@ connectWebSocket();
 async function getCookiesForUrl(url) {
   try {
     const cookies = await chrome.cookies.getAll({ url });
-    return cookies.map(c => `${c.name}=${c.value}`).join("; ");
+    // Return full cookie objects for Netscape cookie file generation
+    return cookies.map(c => ({
+      domain: c.domain,
+      name: c.name,
+      value: c.value,
+      path: c.path,
+      secure: c.secure,
+      httpOnly: c.httpOnly,
+      expirationDate: c.expirationDate || 0
+    }));
   } catch (e) {
     console.warn(`${LOG} Failed to get cookies for ${url}:`, e);
-    return "";
+    return [];
   }
 }
 
@@ -331,13 +340,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log(`${LOG} Format cache MISS for tab ${tabId}, fetching…`);
     formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
     
-    getCookiesForUrl(url).then(cookieStr => {
-      const headers = {};
-      if (cookieStr) headers["X-Thunder-Cookies"] = cookieStr;
+    getCookiesForUrl(url).then(cookieObjects => {
+      // POST cookies as JSON body instead of header to avoid size limits
+      const infoPayload = {
+        url: url,
+        drm_hint: drmHint,
+        cookies: cookieObjects.length > 0 ? cookieObjects : undefined
+      };
       
-      fetch(`${DAEMON_INFO_URL}?url=${encodeURIComponent(url)}&drm_hint=${drmHint ? "true" : "false"}`, { 
+      fetch(DAEMON_INFO_URL, { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         signal: AbortSignal.timeout(30_000),
-        headers
+        body: JSON.stringify(infoPayload)
       })
         .then(resp => {
           if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -410,10 +425,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     console.log(`${LOG} Triggering download from content script:`, payload);
     
-    // IDM-style: inject browser cookies into the payload
+    // IDM-style: inject browser cookies into the payload as objects
     const targetUrl = payload.page_url || payload.url;
-    getCookiesForUrl(targetUrl).then(cookieStr => {
-      if (cookieStr) payload.cookies = cookieStr;
+    getCookiesForUrl(targetUrl).then(cookieObjects => {
+      if (cookieObjects.length > 0) payload.cookies = cookieObjects;
       
       return fetch(DAEMON_URL, {
         method: "POST",
@@ -510,7 +525,7 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
   // 3. Extract metadata
    const referer = downloadItem.referrer || "";
     const userAgent = navigator.userAgent;
-    const cookieString = await getCookiesForUrl(url);
+    const cookieObjects = await getCookiesForUrl(url);
 
   // 4. Build payload
   const payload = {
@@ -520,7 +535,7 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
 
   if (referer) payload.referer = referer;
   if (userAgent) payload.user_agent = userAgent;
-  if (cookieString) payload.cookies = cookieString;
+  if (cookieObjects.length > 0) payload.cookies = cookieObjects;
 
   // 5. Dispatch to daemon
   try {

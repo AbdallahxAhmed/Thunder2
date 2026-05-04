@@ -217,12 +217,34 @@ async def get_download_status(job_id: str) -> JSONResponse:
 
 
 @app.get("/api/info", response_model=InfoResponse)
-async def get_media_info(
-    request: Request,
+async def get_media_info_compat(
     url: str = Query(..., min_length=1),
-    drm_hint: bool = Query(
-        default=False, description="Hint that DRM/manifest signals were detected"
-    ),
+    drm_hint: bool = Query(default=False),
+) -> JSONResponse:
+    """GET variant for backward compatibility (curl, tests)."""
+    return await _get_media_info(url=url, drm_hint=drm_hint, cookies=None)
+
+
+@app.post("/api/info", response_model=InfoResponse)
+async def post_media_info(body: dict = None) -> JSONResponse:
+    """POST variant — receives cookie objects from the extension."""
+    body = body or {}
+    url = body.get("url", "")
+    if not url:
+        return JSONResponse(
+            status_code=422,
+            content=ErrorResponse(
+                error_code="VALIDATION_ERROR",
+                message="url is required",
+            ).model_dump(),
+        )
+    drm_hint = bool(body.get("drm_hint", False))
+    cookies = body.get("cookies")  # list of Chrome cookie objects or None
+    return await _get_media_info(url=url, drm_hint=drm_hint, cookies=cookies)
+
+
+async def _get_media_info(
+    *, url: str, drm_hint: bool, cookies: list | None
 ) -> JSONResponse:
     """Query available formats for a media URL via yt-dlp.
 
@@ -241,11 +263,8 @@ async def get_media_info(
             ).model_dump(),
         )
 
-    # Extract browser cookies injected by the extension (IDM-style)
-    injected_cookies = request.headers.get("x-thunder-cookies", "")
-
     try:
-        info = await asyncio.to_thread(engine.extract_info, url, cookies=injected_cookies or None)
+        info = await asyncio.to_thread(engine.extract_info, url, cookies=cookies)
     except yt_dlp.utils.DownloadError as exc:
         if drm_hint:
             resp = InfoResponse(

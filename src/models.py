@@ -35,7 +35,10 @@ class DownloadRequest(BaseModel):
     """Incoming download submission from the browser extension."""
 
     url: str = Field(..., min_length=1, description="Download URL")
-    cookies: Optional[str] = Field(default=None, description="Raw cookie header")
+    cookies: Optional[Any] = Field(
+        default=None,
+        description="Browser cookies — either a raw header string or array of Chrome cookie objects",
+    )
     user_agent: Optional[str] = Field(default=None, description="Custom User-Agent")
     drm_keys: Optional[str] = Field(
         default=None, description="KID:KEY hex pair(s) for DRM decryption (comma-separated for multiple)"
