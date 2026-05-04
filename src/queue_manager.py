@@ -80,14 +80,12 @@ class QueueManager:
         # Jobs stuck in DOWNLOADING from a previous crash will never complete
         # because their engine threads died.  Re-queue them so they get retried.
         async with get_db(self._db_path) as db:
-            cursor = await db.execute(
+            await db.execute(
                 "UPDATE jobs SET status = ? WHERE status IN (?, ?)",
                 (DownloadStatus.QUEUED.value, DownloadStatus.DOWNLOADING.value, DownloadStatus.PAUSED.value),
             )
-            recovered = cursor.rowcount
-            if recovered:
-                await db.commit()
-                _log.info("Startup recovery: reset %d stale jobs to QUEUED", recovered)
+            await db.commit()
+            _log.info("Startup recovery: reset stale jobs to QUEUED")
 
         # Load non-terminal jobs into Hot Cache
         async with get_db(self._db_path) as db:
@@ -684,13 +682,13 @@ class QueueManager:
                     state._engine_job._cancel_flag = True
 
             async with get_db(self._db_path) as db:
-                cursor = await db.execute(
+                await db.execute(
                     "UPDATE jobs SET status = ? WHERE status NOT IN (?, ?)",
                     (DownloadStatus.CANCELLED.value, DownloadStatus.COMPLETED.value, DownloadStatus.CANCELLED.value),
                 )
-                count = cursor.rowcount
                 await db.commit()
 
+            count = len(self._hot_cache)
             self._hot_cache.clear()
 
         _log.info("Admin: cleared %d jobs", count)
