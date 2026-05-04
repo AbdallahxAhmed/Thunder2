@@ -356,8 +356,8 @@ async def _get_media_info(
     best_format_per_height: dict[int, dict] = {}
     for f in info.get("formats", []):
         vc = f.get("vcodec") or ""
-        if vc == "none" or vc == "mhtml":
-            continue
+        
+        # Robust height extraction
         h = f.get("height")
         if h is not None:
             try:
@@ -371,6 +371,10 @@ async def _get_media_info(
                     h = int(res.split("x")[-1])
                 except (ValueError, IndexError):
                     pass
+                    
+        # Skip pseudo-formats or audio-only (vcodec="none" AND no height)
+        if vc == "mhtml" or (vc == "none" and not h):
+            continue
         if not h or h < 1:
             continue
             

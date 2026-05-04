@@ -520,8 +520,28 @@ function openMenu(instance) {
           return;
         }
 
-        renderFormats(instance, response.data);
-      },
+        // Merge the DRM format with yt-dlp formats
+        chrome.runtime.sendMessage({ action: "GET_RAW_STREAM" }, (rawResp) => {
+          let finalData = response.data;
+          
+          if (rawResp && rawResp.ok) {
+            const hasRaw = finalData.options.some((o) => o.format_id === "raw-intercept");
+            if (!hasRaw) {
+              finalData.options.unshift({
+                type: "video",
+                format_id: "raw-intercept",
+                label: "🎬 Master Stream (Adaptive)",
+                badge: "RAW",
+                vcodec: "unknown",
+                acodec: "unknown",
+                ext: "m3u8",
+              });
+            }
+          }
+          
+          renderFormats(instance, finalData);
+        });
+      }
     );
   }
 
