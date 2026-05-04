@@ -88,13 +88,16 @@ class YtdlpClient:
                 with yt_dlp.YoutubeDL(auth_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
                 all_formats = (info or {}).get("formats", [])
-                if all_formats:
-                    sample = all_formats[0]
-                    logger.info(
-                        "[THUNDER] Sample format: height=%s vcodec=%s acodec=%s protocol=%s has_url=%s",
-                        sample.get("height"), sample.get("vcodec"), sample.get("acodec"),
-                        sample.get("protocol"), bool(sample.get("url") or sample.get("manifest_url")),
-                    )
+                # Log the first real video format (skip mhtml/audio)
+                for _sf in all_formats:
+                    if (_sf.get("vcodec") or "") != "none" and _sf.get("vcodec") != "mhtml":
+                        logger.info(
+                            "[THUNDER] First video format: height=%s vcodec=%s protocol=%s has_url=%s resolution=%s format_note=%s",
+                            _sf.get("height"), _sf.get("vcodec"),
+                            _sf.get("protocol"), bool(_sf.get("url") or _sf.get("manifest_url")),
+                            _sf.get("resolution"), _sf.get("format_note"),
+                        )
+                        break
                 auth_formats = [
                     f for f in all_formats
                     if f.get("height") and (f.get("vcodec") or "") != "none"

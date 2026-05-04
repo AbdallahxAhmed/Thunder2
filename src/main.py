@@ -298,15 +298,29 @@ async def _get_media_info(
     best_tbr_per_height: dict[int, float] = {}   # height → best total bitrate
 
     for f in info.get("formats", []):
-        h = f.get("height")
         vcodec = f.get("vcodec") or ""
-        # Skip audio-only (vcodec explicitly set to "none") but accept
-        # mobile formats where vcodec may be null/empty (IOS/ANDROID clients)
-        if not h or not isinstance(h, (int, float)):
+        # Skip audio-only (vcodec explicitly "none") and mhtml pseudo-formats
+        if vcodec == "none" or vcodec == "mhtml":
             continue
-        if vcodec == "none":
+
+        # Robust height extraction
+        h = f.get("height")
+        # Accept int, float, or numeric string
+        if h is not None:
+            try:
+                h = int(h)
+            except (ValueError, TypeError):
+                h = None
+        # Fallback: parse from "resolution" field (e.g. "1920x1080")
+        if not h:
+            res = f.get("resolution") or ""
+            if "x" in res:
+                try:
+                    h = int(res.split("x")[-1])
+                except (ValueError, IndexError):
+                    pass
+        if not h or h < 1:
             continue
-        h = int(h)
         available_heights.add(h)
 
         # Score codec
