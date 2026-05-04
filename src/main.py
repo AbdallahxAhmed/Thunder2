@@ -250,14 +250,14 @@ async def get_media_info(
         )
         return JSONResponse(content=resp.model_dump(mode="json"))
     except Exception as exc:
-        logger.exception("Unexpected error in /api/info")
-        return JSONResponse(
-            status_code=500,
-            content=ErrorResponse(
-                error_code="INTERNAL_ERROR",
-                message=str(exc),
-            ).model_dump(),
+        logger.warning("Unsupported URL in /api/info: %s — %s", url, exc)
+        resp = InfoResponse(
+            url=url,
+            status="unsupported",
+            reason=str(exc),
+            options=[],
         )
+        return JSONResponse(content=resp.model_dump(mode="json"))
 
     # ── Analyse available video formats ────────────────────────────────
     # Collect the set of heights that actually exist, along with codec

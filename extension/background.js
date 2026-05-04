@@ -244,6 +244,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     // ── Cache MISS — fetch now ───────────────────────────────────────
+    // Pre-filter: skip non-media URLs that will always fail
+    const SKIP_PREFIXES = ["chrome://", "chrome-extension://"];
+    const SKIP_SUFFIXES = [".jpg", ".png", ".css"];
+    const urlLower = url.toLowerCase();
+    if (SKIP_PREFIXES.some(p => urlLower.startsWith(p)) ||
+        SKIP_SUFFIXES.some(s => urlLower.endsWith(s))) {
+      console.log(`${LOG} Skipping unsupported URL: ${url}`);
+      if (hasRawStream) sendHybridResponse(null, false);
+      else sendResponse({ ok: false, error: "Unsupported URL" });
+      return true;
+    }
+
     console.log(`${LOG} Format cache MISS for tab ${tabId}, fetching…`);
     formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
     fetch(`${DAEMON_INFO_URL}?url=${encodeURIComponent(url)}&drm_hint=${drmHint ? "true" : "false"}`, { signal: AbortSignal.timeout(30_000) })
