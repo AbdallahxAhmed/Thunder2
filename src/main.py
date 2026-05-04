@@ -300,7 +300,11 @@ async def _get_media_info(
     for f in info.get("formats", []):
         h = f.get("height")
         vcodec = f.get("vcodec") or ""
-        if not h or not isinstance(h, (int, float)) or vcodec == "none":
+        # Skip audio-only (vcodec explicitly set to "none") but accept
+        # mobile formats where vcodec may be null/empty (IOS/ANDROID clients)
+        if not h or not isinstance(h, (int, float)):
+            continue
+        if vcodec == "none":
             continue
         h = int(h)
         available_heights.add(h)

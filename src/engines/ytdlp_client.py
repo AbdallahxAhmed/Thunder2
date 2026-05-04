@@ -87,15 +87,22 @@ class YtdlpClient:
                 }
                 with yt_dlp.YoutubeDL(auth_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
+                all_formats = (info or {}).get("formats", [])
+                if all_formats:
+                    sample = all_formats[0]
+                    logger.info(
+                        "[THUNDER] Sample format: height=%s vcodec=%s acodec=%s protocol=%s has_url=%s",
+                        sample.get("height"), sample.get("vcodec"), sample.get("acodec"),
+                        sample.get("protocol"), bool(sample.get("url") or sample.get("manifest_url")),
+                    )
                 auth_formats = [
-                    f for f in (info or {}).get("formats", [])
+                    f for f in all_formats
                     if f.get("height") and (f.get("vcodec") or "") != "none"
                 ]
                 logger.info(
-                    "Authenticated extraction: %d video formats for %s",
-                    len(auth_formats), url,
+                    "Authenticated extraction: %d total, %d video formats for %s",
+                    len(all_formats), len(auth_formats), url,
                 )
-                logger.error(f"[THUNDER] Fallback extraction result keys: {info.keys() if info else 'None'}")
                 if not auth_formats:
                     logger.error("[THUNDER] Authenticated extraction STILL returned 0 video formats. Aborting.")
                     raise yt_dlp.utils.DownloadError("Authenticated extraction returned no video formats")
