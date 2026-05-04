@@ -22,7 +22,7 @@ import yt_dlp
 from src.config import settings
 from src.engines import ENGINE_MAP, _register_defaults, get_engine
 from src.health import check_all_engines
-from src.job_manager import job_manager
+from src.queue_manager import queue_manager, ActiveJobState
 from src.logger import correlation_id, setup_logging
 from src.models import (
     DownloadRequest,
@@ -72,7 +72,14 @@ async def lifespan(app: FastAPI):
     )
 
     _start_time = time.time()
+
+    # Initialize QueueManager (creates DB, loads cache, starts scheduler)
+    await queue_manager.init()
+
     yield
+
+    # Shutdown QueueManager (cancels scheduler, cleans up)
+    await queue_manager.shutdown()
     logger.info("Thunder shutting down", extra={"event": "daemon.shutdown"})
 
 
@@ -121,85 +128,7 @@ async def request_correlation_middleware(request: Request, call_next):
     return response
 
 
-# ── Download orchestrator ─────────────────────────────────────────────────
-
-
-async def _execute_download(job_id: str, request: DownloadRequest) -> None:
-    """Run a download in a background thread and update the job store."""
-    job = await job_manager.get_job(job_id)
-    if job is None:
-        return
-
-    engine = get_engine(job.engine)
-    if engine is None:
-        await job_manager.update_job(
-            job_id,
-            status=DownloadStatus.FAILED,
-            error=f"Engine '{job.engine}' is not registered",
-        )
-        return
-
-    await job_manager.update_job(job_id, status=DownloadStatus.DOWNLOADING)
-    logger.info(
-        "Download started: %s via %s",
-        job_id,
-        job.engine,
-        extra={
-            "download_id": job_id,
-            "engine": job.engine,
-            "event": "download.started",
-        },
-    )
-
-    try:
-        result = await asyncio.to_thread(engine.execute, job, request)
-
-        if result.get("status") == "completed":
-            await job_manager.update_job(
-                job_id,
-                status=DownloadStatus.COMPLETED,
-                progress=100.0,
-                output_path=result.get("output_path"),
-                file_size=result.get("file_size"),
-            )
-            logger.info(
-                "Download completed: %s → %s",
-                job_id,
-                result.get("output_path"),
-                extra={
-                    "download_id": job_id,
-                    "engine": job.engine,
-                    "event": "download.completed",
-                },
-            )
-        else:
-            error_msg = result.get("error", "Unknown engine error")
-            await job_manager.update_job(
-                job_id, status=DownloadStatus.FAILED, error=error_msg
-            )
-            logger.error(
-                "Download failed: %s — %s",
-                job_id,
-                error_msg,
-                extra={
-                    "download_id": job_id,
-                    "engine": job.engine,
-                    "event": "download.failed",
-                },
-            )
-    except Exception as exc:
-        await job_manager.update_job(
-            job_id, status=DownloadStatus.FAILED, error=str(exc)
-        )
-        logger.exception(
-            "Download crashed: %s",
-            job_id,
-            extra={
-                "download_id": job_id,
-                "engine": job.engine,
-                "event": "download.failed",
-            },
-        )
+# ── Download orchestration is now handled by QueueManager ─────────────────
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────
@@ -233,15 +162,15 @@ async def submit_download(request: DownloadRequest) -> JSONResponse:
             },
         )
 
-    job = await job_manager.create_job(url=request.url, engine=engine_name)
-
-    # Fire-and-forget background task
-    asyncio.create_task(_execute_download(job.id, request))
+    job_id = str(uuid.uuid4())
+    job = await queue_manager.create_job(
+        job_id=job_id, url=request.url, engine=engine_name,
+    )
 
     return JSONResponse(
         status_code=202,
         content=DownloadResponse(
-            id=job.id,
+            id=job.job_id,
             status=job.status.value,
             engine=engine_name,
         ).model_dump(),
@@ -251,7 +180,7 @@ async def submit_download(request: DownloadRequest) -> JSONResponse:
 @app.get("/api/download/{job_id}")
 async def get_download_status(job_id: str) -> JSONResponse:
     """Query the current status of a download job."""
-    job = await job_manager.get_job(job_id)
+    job = await queue_manager.get_job(job_id)
     if job is None:
         return JSONResponse(
             status_code=404,
@@ -262,7 +191,7 @@ async def get_download_status(job_id: str) -> JSONResponse:
         )
     return JSONResponse(
         content=StatusResponse(
-            id=job.id,
+            id=job.job_id,
             url=job.url,
             engine=job.engine,
             status=job.status.value,

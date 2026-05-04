@@ -96,7 +96,8 @@ def mock_all_engines_available():
         EngineHealth(name="m3u8", available=True, version=None),
     ]
     with patch("src.main.check_all_engines", return_value=engines):
-        yield engines
+        with patch("src.main._engine_health", engines):
+            yield engines
 
 
 @pytest.fixture
