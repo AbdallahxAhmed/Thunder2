@@ -379,8 +379,11 @@ async def _get_media_info(
         vc_lower = vc.lower()
         is_mp4 = "avc1" in vc_lower or "mp4" in vc_lower or "h264" in vc_lower
         tbr = f.get("tbr") or 0
+        protocol = (f.get("protocol") or "").lower()
+        is_m3u8 = "m3u8" in protocol
         
-        score = (fps, 1 if is_mp4 else 0, tbr)
+        # Priority: Non-m3u8 > FPS > MP4 codec tiebreak > TBR
+        score = (0 if is_m3u8 else 1, fps, 1 if is_mp4 else 0, tbr)
         
         prev = best_format_per_height.get(h)
         if not prev:
@@ -390,7 +393,10 @@ async def _get_media_info(
             prev_vc = (prev.get("vcodec") or "").lower()
             prev_is_mp4 = "avc1" in prev_vc or "mp4" in prev_vc or "h264" in prev_vc
             prev_tbr = prev.get("tbr") or 0
-            prev_score = (prev_fps, 1 if prev_is_mp4 else 0, prev_tbr)
+            prev_protocol = (prev.get("protocol") or "").lower()
+            prev_is_m3u8 = "m3u8" in prev_protocol
+            
+            prev_score = (0 if prev_is_m3u8 else 1, prev_fps, 1 if prev_is_mp4 else 0, prev_tbr)
             
             if score > prev_score:
                 best_format_per_height[h] = f
