@@ -84,7 +84,7 @@ class YtdlpClient:
                     "cookiesfrombrowser": (self._get_browser(user_agent),),
                     "extractor_args": {"youtube": ["client=IOS,ANDROID_VR", "player_client=ios,android"]},
                     "format": "bestvideo+bestaudio/best",
-                    "remote_components": "ejs:github",
+                    "remote_components": ["ejs:github"],
                 }
                 with yt_dlp.YoutubeDL(auth_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
@@ -169,7 +169,7 @@ class YtdlpClient:
                 opts["cookiesfrombrowser"] = (self._get_browser(request.user_agent),)
                 opts["extractor_args"] = {"youtube": ["client=IOS,ANDROID_VR", "player_client=ios,android"]}
                 opts["format"] = "bestvideo+bestaudio/best"
-                opts["remote_components"] = "ejs:github"
+                opts["remote_components"] = ["ejs:github"]
                 opts.pop("no_warnings", None)
                 try:
                     with yt_dlp.YoutubeDL(opts) as ydl:
