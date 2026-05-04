@@ -728,7 +728,13 @@ function setupGlobalInteractions() {
     const formatId = btn.getAttribute("data-format-id");
     if (!formatId) return;
 
-    const engineType = formatId === "raw-intercept" ? "m3u8" : "ytdlp";
+    let engineType = "ytdlp";
+    if (formatId === "raw-intercept") {
+      engineType = "m3u8";
+    } else if (targetInstance.cachedData && targetInstance.cachedData.options) {
+      const opt = targetInstance.cachedData.options.find(o => o.format_id === formatId);
+      if (opt && opt.engine) engineType = opt.engine;
+    }
     const sanitizedTitle = sanitizePageTitle();
 
     btn.classList.add("dispatching");

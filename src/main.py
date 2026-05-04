@@ -385,8 +385,15 @@ async def _get_media_info(
         protocol = (f.get("protocol") or "").lower()
         is_m3u8 = "m3u8" in protocol
         
-        # Priority: Non-m3u8 > FPS > MP4 codec tiebreak > TBR
-        score = (0 if is_m3u8 else 1, fps, 1 if is_mp4 else 0, tbr)
+        url_lower = url.lower()
+        is_youtube = "youtube.com" in url_lower or "youtu.be" in url_lower
+        
+        if is_youtube:
+            # YouTube: Penalize m3u8 to prefer raw MP4/WEBM
+            score = (0 if is_m3u8 else 1, fps, 1 if is_mp4 else 0, tbr)
+        else:
+            # CloudNative/Dailymotion/Generic: Prioritize m3u8
+            score = (1 if is_m3u8 else 0, fps, tbr)
         
         prev = best_format_per_height.get(h)
         if not prev:
@@ -399,7 +406,10 @@ async def _get_media_info(
             prev_protocol = (prev.get("protocol") or "").lower()
             prev_is_m3u8 = "m3u8" in prev_protocol
             
-            prev_score = (0 if prev_is_m3u8 else 1, prev_fps, 1 if prev_is_mp4 else 0, prev_tbr)
+            if is_youtube:
+                prev_score = (0 if prev_is_m3u8 else 1, prev_fps, 1 if prev_is_mp4 else 0, prev_tbr)
+            else:
+                prev_score = (1 if prev_is_m3u8 else 0, prev_fps, prev_tbr)
             
             if score > prev_score:
                 best_format_per_height[h] = f
@@ -449,6 +459,10 @@ async def _get_media_info(
             badge = "HQ"
 
         vc = (fmt.get("vcodec") or "").split(".")[0].lower()
+        
+        # Explicit Engine Routing
+        protocol = (fmt.get("protocol") or "").lower()
+        format_engine = "m3u8" if not is_youtube and "m3u8" in protocol else "ytdlp"
 
         options.append(QualityOption(
             label=label,
@@ -461,6 +475,7 @@ async def _get_media_info(
             resolution=fmt.get("resolution"),
             fps=fps,
             size_mb=size_mb,
+            engine=format_engine,
         ))
 
     # Always offer Audio Only
@@ -469,11 +484,15 @@ async def _get_media_info(
         format_id="bestaudio/best",
         type="audio",
         badge="Audio",
+        engine="ytdlp",
     ))
+    
+    suggested_engine = "ytdlp" if is_youtube else "m3u8"
 
     resp = InfoResponse(
         url=url,
         status="ok",
+        suggested_engine=suggested_engine,
         title=info.get("title"),
         thumbnail=info.get("thumbnail"),
         duration=info.get("duration"),

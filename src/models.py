@@ -238,6 +238,7 @@ class QualityOption(BaseModel):
     resolution: Optional[str] = Field(default=None, description="Resolution string (e.g. '1920x1080')")
     fps: Optional[int] = Field(default=None, description="Video frames per second")
     size_mb: Optional[float] = Field(default=None, description="Calculated file size in Megabytes")
+    engine: Optional[str] = Field(default=None, description="Explicit engine override (e.g. 'm3u8')")
 
 
 class InfoRequest(BaseModel):
