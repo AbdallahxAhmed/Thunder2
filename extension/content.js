@@ -126,13 +126,7 @@ function setupGlobalTracking() {
       updateAllPillsVisibility();
 
       // Predictive Pre-warming
-      const normUrl = normalizeUrl(window.location.href);
-      if (!preWarmSent || preWarmUrl !== normUrl) {
-        preWarmUrl = normUrl;
-        preWarmSent = true;
-        console.log(`[THUNDER] Sending PRE_WARM_URL for: ${preWarmUrl}`);
-        chrome.runtime.sendMessage({ action: "PRE_WARM_URL", url: preWarmUrl });
-      }
+      dispatchPreWarm();
     }
     if (activityTimeout) clearTimeout(activityTimeout);
     activityTimeout = setTimeout(() => {
@@ -943,6 +937,8 @@ function onSpaNavigation() {
   preWarmSent = false;
   preWarmUrl = "";
 
+  dispatchPreWarm();
+
   // Destroy all pills for the old page
   for (const videoNode of Array.from(pillRegistry.keys())) {
     destroyPill(videoNode);
@@ -979,25 +975,6 @@ function wakeUp() {
   if (isAwake) return;
   isAwake = true;
   console.log(`${LOG} Video detected. Waking up dormant script in ${window.location.href}`);
-  
-  // Signal 1: YouTube's custom navigation event (fastest for YouTube)
-  window.addEventListener("yt-navigate-finish", onSpaNavigation);
-
-  // Signal 2: Intercept pushState/replaceState (catches ALL SPA frameworks)
-  const _origPushState = history.pushState;
-  const _origReplaceState = history.replaceState;
-  history.pushState = function(...args) {
-    _origPushState.apply(this, args);
-    onSpaNavigation();
-  };
-  history.replaceState = function(...args) {
-    _origReplaceState.apply(this, args);
-    onSpaNavigation();
-  };
-
-  // Signal 3: popstate for back/forward navigation
-  window.addEventListener("popstate", onSpaNavigation);
-
   init();
 }
 
@@ -1006,6 +983,33 @@ function detectVideo(e) {
     wakeUp();
   }
 }
+
+function dispatchPreWarm() {
+  const normUrl = normalizeUrl(window.location.href);
+  if (!preWarmSent || preWarmUrl !== normUrl) {
+    if (normUrl.includes("youtube.com") && !normUrl.includes("watch?v=")) return;
+    preWarmUrl = normUrl;
+    preWarmSent = true;
+    console.log(`[THUNDER] Sending PRE_WARM_URL for: ${preWarmUrl}`);
+    chrome.runtime.sendMessage({ action: "PRE_WARM_URL", url: preWarmUrl });
+  }
+}
+
+// SPA Listeners bound globally regardless of wake state to allow instant pre-fetching
+window.addEventListener("yt-navigate-finish", onSpaNavigation);
+
+const _origPushState = history.pushState;
+const _origReplaceState = history.replaceState;
+history.pushState = function(...args) {
+  _origPushState.apply(this, args);
+  onSpaNavigation();
+};
+history.replaceState = function(...args) {
+  _origReplaceState.apply(this, args);
+  onSpaNavigation();
+};
+
+window.addEventListener("popstate", onSpaNavigation);
 
 // Stay dormant until a video is explicitly detected
 if (document.querySelector("video")) {
@@ -1016,3 +1020,6 @@ if (document.querySelector("video")) {
   document.addEventListener("loadedmetadata", detectVideo, true);
   document.addEventListener("canplay", detectVideo, true);
 }
+
+// Initial pre-warm attempt immediately on script injection
+dispatchPreWarm();
