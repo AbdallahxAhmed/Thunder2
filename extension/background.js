@@ -345,6 +345,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const infoPayload = {
         url: url,
         drm_hint: drmHint,
+        user_agent: navigator.userAgent,
         cookies: cookieObjects.length > 0 ? cookieObjects : undefined
       };
       
@@ -425,7 +426,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     console.log(`${LOG} Triggering download from content script:`, payload);
     
-    // IDM-style: inject browser cookies into the payload as objects
+    // IDM-style: inject browser cookies and user-agent into the payload as objects
+    payload.user_agent = navigator.userAgent;
     const targetUrl = payload.page_url || payload.url;
     getCookiesForUrl(targetUrl).then(cookieObjects => {
       if (cookieObjects.length > 0) payload.cookies = cookieObjects;

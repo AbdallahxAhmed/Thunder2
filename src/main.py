@@ -32,6 +32,7 @@ from src.models import (
     ErrorResponse,
     HealthResponse,
     StatusResponse,
+    InfoRequest,
     InfoResponse,
     QualityOption,
     JobActionResponse,
@@ -222,29 +223,22 @@ async def get_media_info_compat(
     drm_hint: bool = Query(default=False),
 ) -> JSONResponse:
     """GET variant for backward compatibility (curl, tests)."""
-    return await _get_media_info(url=url, drm_hint=drm_hint, cookies=None)
+    return await _get_media_info(url=url, drm_hint=drm_hint, cookies=None, user_agent=None)
 
 
 @app.post("/api/info", response_model=InfoResponse)
-async def post_media_info(body: dict = None) -> JSONResponse:
-    """POST variant — receives cookie objects from the extension."""
-    body = body or {}
-    url = body.get("url", "")
-    if not url:
-        return JSONResponse(
-            status_code=422,
-            content=ErrorResponse(
-                error_code="VALIDATION_ERROR",
-                message="url is required",
-            ).model_dump(),
-        )
-    drm_hint = bool(body.get("drm_hint", False))
-    cookies = body.get("cookies")  # list of Chrome cookie objects or None
-    return await _get_media_info(url=url, drm_hint=drm_hint, cookies=cookies)
+async def post_media_info(request: InfoRequest) -> JSONResponse:
+    """POST variant — receives cookie objects and user agent from the extension."""
+    return await _get_media_info(
+        url=request.url,
+        drm_hint=request.drm_hint,
+        cookies=request.cookies,
+        user_agent=request.user_agent,
+    )
 
 
 async def _get_media_info(
-    *, url: str, drm_hint: bool, cookies: list | None
+    *, url: str, drm_hint: bool, cookies: list | None, user_agent: str | None
 ) -> JSONResponse:
     """Query available formats for a media URL via yt-dlp.
 
@@ -264,7 +258,9 @@ async def _get_media_info(
         )
 
     try:
-        info = await asyncio.to_thread(engine.extract_info, url, cookies=cookies)
+        info = await asyncio.to_thread(
+            engine.extract_info, url, cookies=cookies, user_agent=user_agent
+        )
     except yt_dlp.utils.DownloadError as exc:
         if drm_hint:
             resp = InfoResponse(

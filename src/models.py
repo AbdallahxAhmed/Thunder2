@@ -233,6 +233,13 @@ class QualityOption(BaseModel):
     )
 
 
+class InfoRequest(BaseModel):
+    """Incoming request for media format extraction."""
+    url: str = Field(..., min_length=1)
+    drm_hint: bool = Field(default=False)
+    cookies: Optional[Any] = Field(default=None)
+    user_agent: Optional[str] = Field(default=None)
+
 class InfoResponse(BaseModel):
     """Response for GET /api/info."""
 

@@ -58,9 +58,13 @@ class YtdlpClient:
 
         return opts
 
-    def extract_info(self, url: str, *, cookies: list | None = None) -> dict:
+    def extract_info(
+        self, url: str, *, cookies: list | None = None, user_agent: str | None = None
+    ) -> dict:
         """Fetch available formats without downloading."""
         opts: dict[str, Any] = {"quiet": True, "no_warnings": True}
+        if user_agent:
+            opts.setdefault("http_headers", {})["User-Agent"] = user_agent
         cookie_path = None
         if cookies:
             cookie_path = write_cookie_file(cookies)
