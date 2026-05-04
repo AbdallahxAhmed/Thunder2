@@ -423,7 +423,7 @@ async def _get_media_info(
         if not bytes_val:
             bytes_val = fmt.get("filesize_approx")
         if not bytes_val and fmt.get("tbr") and info.get("duration"):
-            bytes_val = (fmt.get("tbr") * 1000 / 8) * info.get("duration")
+            bytes_val = int((fmt.get("tbr") * 1000 / 8) * info.get("duration"))
         
         size_mb = round(bytes_val / (1024 * 1024), 1) if bytes_val else None
         
