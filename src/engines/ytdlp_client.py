@@ -82,9 +82,8 @@ class YtdlpClient:
                 auth_opts: dict[str, Any] = {
                     "quiet": True,
                     "cookiesfrombrowser": (self._get_browser(user_agent),),
-                    "extractor_args": {"youtube": ["client=IOS,ANDROID_TESTSUITE,WEB_CREATOR", "player_client=ios,android"]},
+                    "extractor_args": {"youtube": ["client=IOS,ANDROID_VR", "player_client=ios,android"]},
                     "format": "bestvideo+bestaudio/best",
-                    "js_runtimes": ["node"],
                 }
                 with yt_dlp.YoutubeDL(auth_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
@@ -167,9 +166,8 @@ class YtdlpClient:
             if needs_auth:
                 logger.info("Retrying download with browser cookies for: %s", request.url)
                 opts["cookiesfrombrowser"] = (self._get_browser(request.user_agent),)
-                opts["extractor_args"] = {"youtube": ["client=IOS,ANDROID_TESTSUITE,WEB_CREATOR", "player_client=ios,android"]}
+                opts["extractor_args"] = {"youtube": ["client=IOS,ANDROID_VR", "player_client=ios,android"]}
                 opts["format"] = "bestvideo+bestaudio/best"
-                opts["js_runtimes"] = ["node"]
                 opts.pop("no_warnings", None)
                 try:
                     with yt_dlp.YoutubeDL(opts) as ydl:

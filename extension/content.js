@@ -1,3 +1,11 @@
+// ── Iframe Guard: abort in known non-media widget frames ──────────────────
+const _hostname = window.location.hostname;
+const _BLOCKED_HOSTS = ["ogs.google.com", "accounts.google.com", "consent.google.com"];
+if (_BLOCKED_HOSTS.some(h => _hostname.includes(h))) {
+  // Silently abort — this is a widget iframe, not a media page
+  throw new Error("[Thunder] Blocked non-media iframe: " + _hostname);
+}
+
 const LOG = "[Thunder UI]";
 const STATE_PILL = "STATE_PILL";
 const STATE_MENU = "STATE_MENU";
