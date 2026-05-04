@@ -37,37 +37,32 @@ class YtdlpClient:
             "quiet": True,
             "no_warnings": True,
         }
-        # Map the User-Agent to a known browser for yt-dlp cookie extraction
-        ua = (request.user_agent or "").lower()
-        if "firefox" in ua:
-            browser = "firefox"
-        elif "edg" in ua:
-            browser = "edge"
-        else:
-            browser = "chromium"
-            
-        opts["cookiesfrombrowser"] = (browser,)
-
         return opts
+
+    def _get_browser(self, user_agent: str | None) -> str:
+        """Map the User-Agent to a known browser for yt-dlp cookie extraction."""
+        ua = (user_agent or "").lower()
+        if "firefox" in ua:
+            return "firefox"
+        if "edg" in ua:
+            return "edge"
+        return "chromium"
 
     def extract_info(
         self, url: str, *, cookies: list | None = None, user_agent: str | None = None
     ) -> dict:
         """Fetch available formats without downloading."""
         opts: dict[str, Any] = {"quiet": True, "no_warnings": True}
-        
-        ua = (user_agent or "").lower()
-        if "firefox" in ua:
-            browser = "firefox"
-        elif "edg" in ua:
-            browser = "edge"
-        else:
-            browser = "chromium"
-            
-        opts["cookiesfrombrowser"] = (browser,)
-
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            return ydl.extract_info(url, download=False)
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                return ydl.extract_info(url, download=False)
+        except Exception as exc:
+            exc_str = str(exc).lower()
+            if "age" in exc_str or "sign in" in exc_str:
+                opts["cookiesfrombrowser"] = (self._get_browser(user_agent),)
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    return ydl.extract_info(url, download=False)
+            raise
 
     def execute(self, job: DownloadJob, request: DownloadRequest) -> dict:
         """Run a media download end-to-end (blocking).
@@ -117,14 +112,27 @@ class YtdlpClient:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([request.url])
 
-            # Determine output file — yt-dlp doesn't return it directly,
-            # so we rely on the outtmpl + the last progress hook filename
             return {
                 "status": "completed",
                 "output_path": os.path.abspath(self.download_dir),
-                "file_size": None,  # not trivially available
+                "file_size": None,
             }
         except Exception as exc:
+            exc_str = str(exc).lower()
+            if "age" in exc_str or "sign in" in exc_str:
+                opts["cookiesfrombrowser"] = (self._get_browser(request.user_agent),)
+                try:
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        ydl.download([request.url])
+
+                    return {
+                        "status": "completed",
+                        "output_path": os.path.abspath(self.download_dir),
+                        "file_size": None,
+                    }
+                except Exception as retry_exc:
+                    exc = retry_exc
+
             logger.error(
                 "yt-dlp failed: %s",
                 exc,
