@@ -236,6 +236,8 @@ class QualityOption(BaseModel):
     ext: Optional[str] = Field(default=None, description="File extension (e.g. 'MP4')")
     filesize: Optional[int] = Field(default=None, description="Approx file size in bytes")
     resolution: Optional[str] = Field(default=None, description="Resolution string (e.g. '1920x1080')")
+    fps: Optional[int] = Field(default=None, description="Video frames per second")
+    size_mb: Optional[float] = Field(default=None, description="Calculated file size in Megabytes")
 
 
 class InfoRequest(BaseModel):

@@ -354,6 +354,7 @@ async def _get_media_info(
 
     # Collect best format per height
     best_format_per_height: dict[int, dict] = {}
+    STANDARD_HEIGHTS = {144, 240, 360, 480, 720, 1080, 1440, 2160}
     for f in info.get("formats", []):
         vc = f.get("vcodec") or ""
         if vc == "none" or vc == "mhtml":
@@ -371,7 +372,7 @@ async def _get_media_info(
                     h = int(res.split("x")[-1])
                 except (ValueError, IndexError):
                     pass
-        if not h or h < 1:
+        if not h or h not in STANDARD_HEIGHTS:
             continue
             
         fps = f.get("fps") or 0
@@ -409,13 +410,24 @@ async def _get_media_info(
             fid = raw_fid
 
         fps = fmt.get("fps")
-        fps_str = str(int(fps)) if fps and fps >= 30 else ""
+        if fps is not None:
+            try:
+                fps = int(fps)
+            except (ValueError, TypeError):
+                fps = None
+
         ext = (fmt.get("ext") or "mp4").upper()
         
-        size = fmt.get("filesize") or fmt.get("filesize_approx")
-        size_str = f" - ~{size / 1024 / 1024:.1f}MB" if size else ""
+        # Smart Size Calculation
+        bytes_val = fmt.get("filesize")
+        if not bytes_val:
+            bytes_val = fmt.get("filesize_approx")
+        if not bytes_val and fmt.get("tbr") and info.get("duration"):
+            bytes_val = (fmt.get("tbr") * 1000 / 8) * info.get("duration")
         
-        label = f"{h}p{fps_str} ({ext}){size_str}"
+        size_mb = round(bytes_val / (1024 * 1024), 1) if bytes_val else None
+        
+        label = f"{h}p"
 
         badge = None
         if h >= 2160:
@@ -436,8 +448,10 @@ async def _get_media_info(
             badge=badge,
             vcodec=vc or None,
             ext=ext,
-            filesize=size,
+            filesize=bytes_val,
             resolution=fmt.get("resolution"),
+            fps=fps,
+            size_mb=size_mb,
         ))
 
     # Always offer Audio Only
