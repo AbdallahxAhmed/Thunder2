@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Central configuration for the UHDD daemon."""
+    """Central configuration for the Thunder daemon."""
 
     aria2_rpc_url: str = "http://localhost:6800/jsonrpc"
     aria2_rpc_secret: str = ""

@@ -1,12 +1,12 @@
 /**
- * UHDD Service Worker — Background Script
+ * Thunder Service Worker — Background Script
  * Manages per-tab interception buffers, dispatches to daemon, shows notifications.
  * Implements zero-latency pre-fetching of format info for supported media sites.
  */
 
 const DAEMON_URL = "http://localhost:8000/api/download";
 const DAEMON_INFO_URL = "http://localhost:8000/api/info";
-const LOG = "[UHDD SW]";
+const LOG = "[Thunder SW]";
 
 // ─── Anti-Loop Guard ────────────────────────────────────────────────────
 
@@ -49,9 +49,9 @@ function isCacheFresh(entry) {
 
 
 
-// ─── Dispatch to UHDD Daemon ──────────────────────────────────────────
+// ─── Dispatch to Thunder Daemon ──────────────────────────────────────────
 
-async function dispatchToUHDD(tabId) {
+async function dispatchToThunder(tabId) {
   const buffer = tabBuffers.get(tabId);
   if (!buffer || !buffer.manifestUrl) return;
 
@@ -99,7 +99,7 @@ async function dispatchToUHDD(tabId) {
       chrome.notifications.create({
         type: "basic",
         iconUrl: "icons/icon48.png",
-        title: "UHDD: Download Queued",
+        title: "Thunder: Download Queued",
         message: `${url.substring(0, 50)}… → ${engine}`,
       });
     } else {
@@ -110,8 +110,8 @@ async function dispatchToUHDD(tabId) {
     chrome.notifications.create({
       type: "basic",
       iconUrl: "icons/icon48.png",
-      title: "UHDD: Backend Offline",
-      message: "Could not reach UHDD daemon at localhost:8000",
+      title: "Thunder: Backend Offline",
+      message: "Could not reach Thunder daemon at localhost:8000",
     });
   }
 }
@@ -155,7 +155,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       buffer.manifestUrl = message.url;
       buffer.drmHint = buffer.drmHint || Boolean(message.drmHint);
       if (message.title) buffer.title = message.title;
-      // NOTE: NO dispatchToUHDD() — user must explicitly trigger download
+      // NOTE: NO dispatchToThunder() — user must explicitly trigger download
       return;
     } else if (message.type === "drm_package") {
       console.log(`${LOG} [tab ${tabId}] DRM package cached (no auto-dispatch)`);
@@ -166,7 +166,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.drmKeys) buffer.drmKeys = message.drmKeys;
       buffer.drmHint = true;
       if (message.title) buffer.title = message.title;
-      // NOTE: NO dispatchToUHDD() — user must explicitly trigger download
+      // NOTE: NO dispatchToThunder() — user must explicitly trigger download
       return;
     }
   }
@@ -332,7 +332,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.notifications.create({
         type: "basic",
         iconUrl: "icons/icon48.png",
-        title: "UHDD: Download Queued",
+        title: "Thunder: Download Queued",
         message: `${payload.url.substring(0, 50)}… → ${engine}`,
       });
       sendResponse({ ok: true, data });
@@ -342,8 +342,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.notifications.create({
         type: "basic",
         iconUrl: "icons/icon48.png",
-        title: "UHDD: Backend Offline",
-        message: "Could not reach UHDD daemon at localhost:8000",
+        title: "Thunder: Backend Offline",
+        message: "Could not reach Thunder daemon at localhost:8000",
       });
       sendResponse({ ok: false, error: err.message });
     });
@@ -429,7 +429,7 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
       chrome.notifications.create({
         type: "basic",
         iconUrl: "icons/icon48.png",
-        title: "UHDD: Download Hijacked",
+        title: "Thunder: Download Hijacked",
         message: `${url.substring(0, 50)}… → ${data.engine}`,
       });
     } else {
@@ -440,8 +440,8 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     chrome.notifications.create({
       type: "basic",
       iconUrl: "icons/icon48.png",
-      title: "UHDD: Backend Offline",
-      message: "Could not reach UHDD daemon. Download proceeding natively.",
+      title: "Thunder: Backend Offline",
+      message: "Could not reach Thunder daemon. Download proceeding natively.",
     });
     // We don't cancel the download, so it falls back to Chrome gracefully
   }

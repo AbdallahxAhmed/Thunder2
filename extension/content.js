@@ -1,4 +1,4 @@
-const LOG = "[UHDD UI]";
+const LOG = "[Thunder UI]";
 const STATE_PILL = "STATE_PILL";
 const STATE_MENU = "STATE_MENU";
 
@@ -48,7 +48,7 @@ function injectHost() {
   if (uiHost) return;
 
   uiHost = document.createElement("div");
-  uiHost.id = "uhdd-host";
+  uiHost.id = "thunder-host";
   uiHost.style.cssText = HOST_STYLE;
 
   shadowRoot = uiHost.attachShadow({ mode: "closed" });
@@ -59,7 +59,7 @@ function injectHost() {
   shadowRoot.appendChild(link);
 
   uiContainer = document.createElement("div");
-  uiContainer.id = "uhdd-container";
+  uiContainer.id = "thunder-container";
   shadowRoot.appendChild(uiContainer);
 
   (document.body || document.documentElement).appendChild(uiHost);

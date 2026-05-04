@@ -1,5 +1,5 @@
 (function () {
-  const LOG = "[UHDD]";
+  const LOG = "[Thunder]";
 
   // ─── Known License Server Patterns ────────────────────────────────────
   // Add URL substrings or hostnames that identify Widevine license endpoints.
@@ -162,7 +162,7 @@
         console.log(`${LOG}   Headers: ${headerCount} total, priority [${priorityCaptured.join(", ")}]`);
       }
 
-      window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
+      window.dispatchEvent(new CustomEvent("thunder_payload_ready", {
         detail: {
           type: "drm_package",
           url: capturedManifestUrl,
@@ -180,7 +180,7 @@
   function dispatchDrmHintIfNeeded() {
     if (!capturedManifestUrl || dispatched || drmHintDispatched) return;
     drmHintDispatched = true;
-    window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
+    window.dispatchEvent(new CustomEvent("thunder_payload_ready", {
       detail: {
         type: "manifest",
         url: capturedManifestUrl,
@@ -227,7 +227,7 @@
         try {
           const bodyStr = typeof body === "string" ? body : new TextDecoder().decode(body);
           if (bodyStr.trim().startsWith("{")) {
-            capturedLicenseHeaders["x-uhdd-original-body"] = bodyStr;
+            capturedLicenseHeaders["x-thunder-original-body"] = bodyStr;
           }
         } catch (e) {}
       }
@@ -262,7 +262,7 @@
 
       if (url.includes(".m3u8")) {
         const drmHint = drmDetected || isLikelyDrmManifestUrl(url);
-        window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
+        window.dispatchEvent(new CustomEvent("thunder_payload_ready", {
           detail: {
             type: "manifest",
             url: url,
@@ -322,9 +322,9 @@
   const originalXHRSend = XMLHttpRequest.prototype.send;
 
   XMLHttpRequest.prototype.open = function (method, url, ...args) {
-    this._uhddMethod = typeof method === "string" ? method.toUpperCase() : "GET";
-    this._uhddUrl = url;
-    this._uhddHeaders = {};
+    this._thunderMethod = typeof method === "string" ? method.toUpperCase() : "GET";
+    this._thunderUrl = url;
+    this._thunderHeaders = {};
 
     // Capture .mpd / .m3u8
     if (typeof url === "string" && (url.includes(".mpd") || url.includes(".m3u8"))) {
@@ -333,7 +333,7 @@
 
       if (url.includes(".m3u8")) {
         const drmHint = drmDetected || isLikelyDrmManifestUrl(url);
-        window.dispatchEvent(new CustomEvent("uhdd_payload_ready", {
+        window.dispatchEvent(new CustomEvent("thunder_payload_ready", {
           detail: { type: "manifest", url: url, drmHint },
         }));
       } else {
@@ -345,14 +345,14 @@
   };
 
   XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
-    if (this._uhddHeaders) {
-      this._uhddHeaders[name] = value;
+    if (this._thunderHeaders) {
+      this._thunderHeaders[name] = value;
     }
     return originalXHRSetRequestHeader.apply(this, arguments);
   };
 
   XMLHttpRequest.prototype.send = function (body) {
-    handlePotentialLicenseRequest(this._uhddUrl, this._uhddHeaders, body, this._uhddMethod);
+    handlePotentialLicenseRequest(this._thunderUrl, this._thunderHeaders, body, this._thunderMethod);
     return originalXHRSend.apply(this, arguments);
   };
 

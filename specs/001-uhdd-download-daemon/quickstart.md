@@ -1,4 +1,4 @@
-# Quickstart: Unified Headless Download Daemon (UHDD)
+# Quickstart: Unified Headless Download Daemon (Thunder)
 
 ## Prerequisites
 
@@ -14,8 +14,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/dark-downloader.git
-cd dark-downloader
+git clone https://github.com/your-org/thunder.git
+cd thunder
 
 # Create virtual environment
 python3.11 -m venv .venv

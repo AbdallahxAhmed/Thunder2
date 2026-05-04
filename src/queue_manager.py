@@ -1,4 +1,4 @@
-"""Queue Manager for UHDD daemon.
+"""Queue Manager for Thunder daemon.
 
 Handles job persistence (SQLite), concurrency control, and state management.
 Replaces the old in-memory job_manager.py.

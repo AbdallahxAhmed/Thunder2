@@ -148,8 +148,8 @@ pip install fastapi uvicorn httpx pywidevine pydantic requests
 
 ```bash
 # 1. Clone and install
-git clone <repo-url> dark-downloader
-cd dark-downloader
+git clone <repo-url> thunder
+cd thunder
 pip install -r requirements.txt
 
 # 2. Start the daemon
@@ -247,7 +247,7 @@ Page loads → eme_hook.js injects into MAIN world
   → Hooks MediaKeySession.update (attempts key ripping)
   → Intercepts fetch/XHR (captures license URL + headers)
   → Strict binary filter: only ArrayBuffer/Uint8Array bodies
-  → Dispatches "uhdd_payload_ready" CustomEvent
+  → Dispatches "thunder_payload_ready" CustomEvent
   → bridge.js relays to background.js
   → Stored in tabBuffers[tabId]
 ```

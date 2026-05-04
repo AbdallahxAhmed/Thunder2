@@ -57,7 +57,7 @@
 
 **Goal**: RAW format button triggers carry DRM metadata (`pssh`, `license_url`, `license_headers`) from `tabBuffers` to the daemon.
 
-**Independent Test**: Navigate to a DRM-protected page. Wait for `[UHDD SW] DRM package cached` in the background console. Click RAW. Verify the outgoing `POST /api/download` body contains `pssh`, `license_url`, `license_headers`.
+**Independent Test**: Navigate to a DRM-protected page. Wait for `[Thunder SW] DRM package cached` in the background console. Click RAW. Verify the outgoing `POST /api/download` body contains `pssh`, `license_url`, `license_headers`.
 
 ### Implementation for User Story 2
 

@@ -1,6 +1,6 @@
-# Tasks: Unified Headless Download Daemon (UHDD)
+# Tasks: Unified Headless Download Daemon (Thunder)
 
-**Input**: Design documents from `specs/001-uhdd-download-daemon/`
+**Input**: Design documents from `specs/001-thunder-download-daemon/`
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
 **Tests**: Included per constitution Principle VI (Test-First Discipline).

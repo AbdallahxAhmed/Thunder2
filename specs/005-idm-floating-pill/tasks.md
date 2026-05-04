@@ -20,7 +20,7 @@ description: "Task list for IDM-Style Floating Pill implementation"
 **Purpose**: Core infrastructure that MUST be complete before any pill UI can render.
 
 - [ ] T001 [P] Rewrite `extension/content.css` — strip all legacy FAB/dropdown styles. Implement new design system: `:host` reset, pill variants (full/mini), menu panel, quality buttons (ported from popup.css), hover transitions, morph animation keyframes, and size-adaptive breakpoint classes.
-- [ ] T002 [P] Scaffold `extension/content.js` — replace legacy globals with new architecture: `Map<HTMLVideoElement, PillInstance>` registry, `STATE_PILL`/`STATE_MENU` constants, `PillInstance` factory function, and the single `#uhdd-host` + closed Shadow DOM injection per frame.
+- [ ] T002 [P] Scaffold `extension/content.js` — replace legacy globals with new architecture: `Map<HTMLVideoElement, PillInstance>` registry, `STATE_PILL`/`STATE_MENU` constants, `PillInstance` factory function, and the single `#thunder-host` + closed Shadow DOM injection per frame.
 - [ ] T003 Implement video detection system in `extension/content.js` — `MutationObserver` on `document.body` that detects `<video>` elements added/removed. On add: check dimensions via `getBoundingClientRect()`, reject if width < 150 or height < 150, otherwise call `createPill(video)`. On remove: call `destroyPill(video)`.
 
 **Checkpoint**: Shadow DOM host injects. Video elements detected. Pill instances created/destroyed. No visual output yet.

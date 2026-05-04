@@ -44,7 +44,7 @@ class Aria2Client:
 
         payload = {
             "jsonrpc": "2.0",
-            "id": "dark-downloader",
+            "id": "thunder",
             "method": method,
             "params": all_params,
         }

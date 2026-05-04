@@ -1,4 +1,4 @@
-"""API integration tests for UHDD endpoints.
+"""API integration tests for Thunder endpoints.
 
 Mocking strategy: We mock ``queue_manager.create_job`` and
 ``queue_manager.get_job`` on ``src.main`` so that no real SQLite database
