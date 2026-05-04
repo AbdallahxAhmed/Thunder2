@@ -1,4 +1,4 @@
-# Data Model: Unified Headless Download Daemon (UHDD)
+# Data Model: Unified Headless Download Daemon (Thunder)
 
 **Date**: 2026-04-26
 **Source**: [spec.md](spec.md) + [research.md](research.md)

@@ -2,7 +2,7 @@
  * Bridge: Isolated world → Service Worker
  * Listens for MAIN world custom events and forwards via chrome.runtime.
  */
-window.addEventListener("uhdd_payload_ready", (event) => {
+window.addEventListener("thunder_payload_ready", (event) => {
   if (!event.detail || typeof event.detail !== "object") return;
 
   const { type, url, pssh, licenseUrl, licenseHeaders, drmKeys, title, drmHint } = event.detail;

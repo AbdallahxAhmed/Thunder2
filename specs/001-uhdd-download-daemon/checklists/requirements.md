@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Unified Headless Download Daemon (UHDD)
+# Specification Quality Checklist: Unified Headless Download Daemon (Thunder)
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-04-26

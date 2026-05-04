@@ -235,5 +235,58 @@
 .badge-hq { background: rgba(137, 180, 250, 0.15); color: var(--accent-blue); }
 .badge-4k { background: rgba(249, 226, 175, 0.15); color: var(--accent-yellow); }
 .badge-qhd { background: rgba(166, 227, 161, 0.15); color: var(--accent-green); }
-.badge-audio { background: rgba(203, 166, 247, 0.15); color: var(--accent-mauve); }
 .badge-raw { background: rgba(243, 139, 168, 0.15); color: var(--accent-red); }
+
+/* ─── Phase 8.5 UI Elements: Progress & Actions ───────────────────────── */
+
+/* Progress Ring overlay */
+.pill-progress-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 16px;
+  background: conic-gradient(var(--accent-green) 0%, transparent 0%);
+  opacity: 0.2;
+  pointer-events: none;
+  transition: background 0.3s linear;
+}
+
+/* Pause/Resume/Cancel Buttons */
+.pill-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-md);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border);
+}
+
+.pill-action-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  color: var(--text-primary);
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--text-sm);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1;
+  text-align: center;
+}
+
+.pill-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.pill-action-btn.pause:hover { border-color: var(--accent-yellow); color: var(--accent-yellow); }
+.pill-action-btn.resume:hover { border-color: var(--accent-green); color: var(--accent-green); }
+.pill-action-btn.cancel:hover { border-color: var(--accent-red); color: var(--accent-red); }
+
+.pill-action-btn.dispatching {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: wait;
+}

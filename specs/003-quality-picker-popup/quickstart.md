@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-1. UHDD daemon running: `uvicorn src.main:app --host 0.0.0.0 --port 8000`
+1. Thunder daemon running: `uvicorn src.main:app --host 0.0.0.0 --port 8000`
 2. Chrome 102+ with developer mode enabled
 3. Extension loaded from `extension/` directory
 
@@ -51,7 +51,7 @@ curl -s "http://localhost:8000/api/info?url=https%3A%2F%2Fexample.com" | python3
 ### 2. Test format display
 
 1. Navigate to a YouTube video
-2. Click the UHDD extension icon in the toolbar
+2. Click the Thunder extension icon in the toolbar
 3. **Expected**: Loading spinner → format list appears with video and audio sections
 4. Verify: Video formats show resolution, codec, and file size
 5. Verify: Audio formats show codec and bitrate

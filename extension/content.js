@@ -1,4 +1,12 @@
-const LOG = "[UHDD UI]";
+// ── Iframe Guard: abort in known non-media widget frames ──────────────────
+const _hostname = window.location.hostname;
+const _BLOCKED_HOSTS = ["ogs.google.com", "accounts.google.com", "consent.google.com"];
+if (_BLOCKED_HOSTS.some(h => _hostname.includes(h))) {
+  // Silently abort — this is a widget iframe, not a media page
+  throw new Error("[Thunder] Blocked non-media iframe: " + _hostname);
+}
+
+const LOG = "[Thunder UI]";
 const STATE_PILL = "STATE_PILL";
 const STATE_MENU = "STATE_MENU";
 
@@ -23,6 +31,18 @@ let isUIActive = false;
 let preWarmSent = false;
 let preWarmUrl = "";
 
+function normalizeUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    const v = url.searchParams.get("v");
+    url.search = v ? `?v=${v}` : "";
+    url.hash = "";
+    return url.toString();
+  } catch (e) {
+    return rawUrl;
+  }
+}
+
 const HOST_STYLE = `
   position: fixed !important;
   top: 0 !important;
@@ -42,13 +62,19 @@ function init() {
   setupGlobalTracking();
   setupGlobalInteractions();
   setupVideoDetection();
+  
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === "WS_EVENT") {
+      handleWsEvent(msg.payload);
+    }
+  });
 }
 
 function injectHost() {
   if (uiHost) return;
 
   uiHost = document.createElement("div");
-  uiHost.id = "uhdd-host";
+  uiHost.id = "thunder-host";
   uiHost.style.cssText = HOST_STYLE;
 
   shadowRoot = uiHost.attachShadow({ mode: "closed" });
@@ -59,7 +85,7 @@ function injectHost() {
   shadowRoot.appendChild(link);
 
   uiContainer = document.createElement("div");
-  uiContainer.id = "uhdd-container";
+  uiContainer.id = "thunder-container";
   shadowRoot.appendChild(uiContainer);
 
   (document.body || document.documentElement).appendChild(uiHost);
@@ -108,11 +134,7 @@ function setupGlobalTracking() {
       updateAllPillsVisibility();
 
       // Predictive Pre-warming
-      if (!preWarmSent || preWarmUrl !== window.location.href) {
-        preWarmUrl = window.location.href;
-        preWarmSent = true;
-        chrome.runtime.sendMessage({ action: "PRE_WARM_URL", url: preWarmUrl });
-      }
+      dispatchPreWarm();
     }
     if (activityTimeout) clearTimeout(activityTimeout);
     activityTimeout = setTimeout(() => {
@@ -304,6 +326,9 @@ function createPill(video) {
     cachedUrl: null,
     cachedData: null,
     menuHoverTimer: null,
+    jobId: null,
+    jobStatus: null,
+    jobProgress: 0,
   };
 
   const wrapper = document.createElement("div");
@@ -312,6 +337,7 @@ function createPill(video) {
   const pillContent = document.createElement("div");
   pillContent.className = "pill-content";
   pillContent.innerHTML = `
+    <div class="pill-progress-ring"></div>
     <svg class="pill-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
     <span class="pill-text">Download</span>
   `;
@@ -413,16 +439,18 @@ function openMenu(instance) {
   instance.element.classList.add("state-menu");
 
   const menu = instance.element.querySelector(".menu-content");
-  const videoUrl = window.location.href;
+  const videoUrl = normalizeUrl(window.location.href);
 
-  if (instance.cachedUrl === videoUrl && instance.cachedData) {
+  if (instance.jobId) {
+    renderActiveDownload(instance);
+  } else if (instance.cachedUrl === videoUrl && instance.cachedData) {
     renderFormats(instance, instance.cachedData);
   } else {
     menu.innerHTML = '<div class="loading-text">Fetching formats...</div>';
 
     // Predictive rendering: instantly render raw M3U8 if available
     chrome.runtime.sendMessage({ action: "GET_RAW_STREAM" }, (rawResp) => {
-      if (rawResp && rawResp.ok && instance.state === STATE_MENU) {
+      if (rawResp && rawResp.ok && instance.state === STATE_MENU && !instance.jobId) {
         const fakeData = {
           options: [
             {
@@ -445,15 +473,31 @@ function openMenu(instance) {
       }
     });
 
+    // Safety timeout — prevent infinite "Fetching formats..." hang
+    let formatResponseReceived = false;
+    const formatTimeout = setTimeout(() => {
+      if (!formatResponseReceived && instance.state === STATE_MENU) {
+        const loadNode = menu.querySelector(".loading-text");
+        if (loadNode && !menu.querySelector(".format-btn")) {
+          menu.innerHTML = `<div class="loading-text" style="color: var(--accent-red)">Timed out fetching formats</div>`;
+        } else if (loadNode) {
+          loadNode.style.display = "none";
+        }
+      }
+    }, 35000);
+
     chrome.runtime.sendMessage(
       { action: "GET_HYBRID_STREAMS", url: videoUrl },
       (response) => {
+        formatResponseReceived = true;
+        clearTimeout(formatTimeout);
+
         if (response && response.ok) {
           instance.cachedUrl = videoUrl;
           instance.cachedData = response.data;
         }
 
-        if (instance.state !== STATE_MENU) return;
+        if (instance.state !== STATE_MENU || instance.jobId) return;
         if (chrome.runtime.lastError || !response || !response.ok) {
           if (!menu.querySelector(".format-btn")) {
             menu.innerHTML = `<div class="loading-text" style="color: var(--accent-red)">Failed to fetch formats</div>`;
@@ -463,8 +507,41 @@ function openMenu(instance) {
           }
           return;
         }
-        renderFormats(instance, response.data);
-      },
+
+        // Handle "unsupported" status from backend (e.g. age-restricted content)
+        if (response.data && response.data.status === "unsupported") {
+          const reason = response.data.reason || "Unsupported URL";
+          if (!menu.querySelector(".format-btn")) {
+            menu.innerHTML = `<div class="loading-text" style="color: var(--accent-yellow)">${reason}</div>`;
+          } else {
+            const loadNode = menu.querySelector(".loading-text");
+            if (loadNode) loadNode.style.display = "none";
+          }
+          return;
+        }
+
+        // Merge the DRM format with yt-dlp formats
+        chrome.runtime.sendMessage({ action: "GET_RAW_STREAM" }, (rawResp) => {
+          let finalData = response.data;
+          
+          if (rawResp && rawResp.ok) {
+            const hasRaw = finalData.options.some((o) => o.format_id === "raw-intercept");
+            if (!hasRaw) {
+              finalData.options.unshift({
+                type: "video",
+                format_id: "raw-intercept",
+                label: "🎬 Master Stream (Adaptive)",
+                badge: "RAW",
+                vcodec: "unknown",
+                acodec: "unknown",
+                ext: "m3u8",
+              });
+            }
+          }
+          
+          renderFormats(instance, finalData);
+        });
+      }
     );
   }
 
@@ -647,11 +724,17 @@ function setupGlobalInteractions() {
     }
     if (!targetInstance) return;
 
-    const url = window.location.href;
+    const url = normalizeUrl(window.location.href);
     const formatId = btn.getAttribute("data-format-id");
     if (!formatId) return;
 
-    const engineType = formatId === "raw-intercept" ? "m3u8" : "ytdlp";
+    let engineType = "ytdlp";
+    if (formatId === "raw-intercept") {
+      engineType = "m3u8";
+    } else if (targetInstance.cachedData && targetInstance.cachedData.options) {
+      const opt = targetInstance.cachedData.options.find(o => o.format_id === formatId);
+      if (opt && opt.engine) engineType = opt.engine;
+    }
     const sanitizedTitle = sanitizePageTitle();
 
     btn.classList.add("dispatching");
@@ -674,8 +757,52 @@ function setupGlobalInteractions() {
           setTimeout(() => closeMenu(targetInstance), 1500);
           return;
         }
+        
+        targetInstance.jobId = response.data.id;
+        targetInstance.jobStatus = response.data.status || 'queued';
+        updatePillVisuals(targetInstance);
         closeMenu(targetInstance);
       },
+    );
+  });
+
+  // Handle REST Action button clicks
+  uiContainer.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pill-action-btn");
+    if (!btn) return;
+    
+    const instanceElement = btn.closest(".pill-instance");
+    if (!instanceElement) return;
+
+    let targetInstance = null;
+    for (const inst of pillRegistry.values()) {
+      if (inst.element === instanceElement) {
+        targetInstance = inst;
+        break;
+      }
+    }
+    if (!targetInstance || !targetInstance.jobId) return;
+
+    let actionCmd = null;
+    if (btn.classList.contains("pause")) actionCmd = "ACTION_PAUSE";
+    if (btn.classList.contains("resume")) actionCmd = "ACTION_RESUME";
+    if (btn.classList.contains("cancel")) actionCmd = "ACTION_CANCEL";
+    if (!actionCmd) return;
+
+    btn.classList.add("dispatching");
+
+    chrome.runtime.sendMessage(
+      { action: actionCmd, jobId: targetInstance.jobId },
+      (response) => {
+        btn.classList.remove("dispatching");
+        if (chrome.runtime.lastError || (response && !response.ok)) {
+          console.error(`${LOG} ${actionCmd} failed:`, response ? response.error : "Unknown error");
+        } else {
+          targetInstance.jobStatus = response.data.status;
+          updatePillVisuals(targetInstance);
+          if (targetInstance.state === STATE_MENU) renderActiveDownload(targetInstance);
+        }
+      }
     );
   });
 }
@@ -729,4 +856,247 @@ function sanitizePageTitle() {
   return clean || null;
 }
 
-init();
+// ─── Phase 8.5 UI Integration ──────────────────────────────────────────
+
+function renderActiveDownload(instance) {
+  const menu = instance.element.querySelector(".menu-content");
+  
+  let statusText = instance.jobStatus.toUpperCase();
+  let progressText = instance.jobProgress > 0 ? `${instance.jobProgress.toFixed(1)}%` : "";
+  let statusColor = "var(--text-primary)";
+  
+  if (instance.jobStatus === "downloading") statusColor = "var(--accent-green)";
+  if (instance.jobStatus === "paused") statusColor = "var(--accent-yellow)";
+  if (instance.jobStatus === "failed") statusColor = "var(--accent-red)";
+  
+  let actionsHtml = "";
+  if (["queued", "downloading"].includes(instance.jobStatus)) {
+    actionsHtml = `
+      <div class="pill-actions">
+        <button class="pill-action-btn pause">Pause</button>
+        <button class="pill-action-btn cancel">Cancel</button>
+      </div>
+    `;
+  } else if (instance.jobStatus === "paused") {
+    actionsHtml = `
+      <div class="pill-actions">
+        <button class="pill-action-btn resume">Resume</button>
+        <button class="pill-action-btn cancel">Cancel</button>
+      </div>
+    `;
+  }
+  
+  menu.innerHTML = `
+    <div class="section-label">Active Download</div>
+    <div style="padding: var(--space-md) var(--space-lg); display: flex; justify-content: space-between; align-items: center;">
+      <span style="color: ${statusColor}; font-weight: 700;">${statusText}</span>
+      <span style="font-family: var(--font-mono); color: var(--text-secondary);">${progressText}</span>
+    </div>
+    ${actionsHtml}
+  `;
+}
+
+function updatePillVisuals(instance) {
+  const textEl = instance.element.querySelector(".pill-text");
+  const ringEl = instance.element.querySelector(".pill-progress-ring");
+  
+  if (!instance.jobId) {
+    textEl.innerText = "Download";
+    ringEl.style.background = "transparent";
+    return;
+  }
+  
+  if (instance.jobStatus === "downloading") {
+    textEl.innerText = `${instance.jobProgress.toFixed(0)}%`;
+    ringEl.style.background = `conic-gradient(var(--accent-green) ${instance.jobProgress}%, transparent 0%)`;
+  } else {
+    textEl.innerText = instance.jobStatus.charAt(0).toUpperCase() + instance.jobStatus.slice(1);
+    if (instance.jobStatus === "paused") {
+      ringEl.style.background = `conic-gradient(var(--accent-yellow) ${instance.jobProgress}%, transparent 0%)`;
+    } else {
+      ringEl.style.background = "transparent";
+    }
+  }
+}
+
+function handleWsEvent(payload) {
+  if (!payload || !payload.type || !payload.data) return;
+  const eventData = payload.data;
+  
+  if (payload.type === "snapshot") {
+    if (eventData.jobs) {
+      for (const instance of pillRegistry.values()) {
+        if (instance.jobId) {
+          const match = eventData.jobs.find(j => j.id === instance.jobId);
+          if (match) {
+            instance.jobStatus = match.status;
+            instance.jobProgress = match.progress || 0;
+            updatePillVisuals(instance);
+            if (instance.state === STATE_MENU) renderActiveDownload(instance);
+          }
+        }
+      }
+    }
+    return;
+  }
+  
+  for (const instance of pillRegistry.values()) {
+    if (instance.jobId === eventData.id) {
+      if (payload.type === "job.state_changed") {
+        instance.jobStatus = eventData.status;
+      } else if (payload.type === "job.progress") {
+        instance.jobProgress = eventData.progress || 0;
+      }
+      
+      updatePillVisuals(instance);
+      if (instance.state === STATE_MENU) {
+        renderActiveDownload(instance);
+      }
+    }
+  }
+}
+
+// ── SPA Navigation Support ────────────────────────────────────────────────
+// YouTube (and other SPAs) re-use the same page context across navigations.
+// We use multiple signals to detect navigation changes reliably.
+
+let _lastKnownUrl = window.location.href;
+
+function onSpaNavigation() {
+  const currentUrl = window.location.href;
+  if (currentUrl === _lastKnownUrl) return; // duplicate signal, ignore
+  _lastKnownUrl = currentUrl;
+
+  console.log(`${LOG} SPA navigation detected → ${currentUrl}`);
+  preWarmSent = false;
+  preWarmUrl = "";
+
+  dispatchPreWarm();
+
+  // Explicitly RESET the download button's UI for existing pills instead of destroying them
+  // This prevents the pill from getting stuck on "Completed" in SPAs where the video element is reused
+  for (const instance of pillRegistry.values()) {
+    instance.jobId = null;
+    instance.taskId = null; // Legacy support
+    instance.jobStatus = null;
+    instance.jobProgress = 0;
+    instance.cachedUrl = null;
+    instance.cachedData = null;
+    instance.state = STATE_PILL; // Close menu if open
+
+    if (instance.activePollingInterval) {
+      clearInterval(instance.activePollingInterval);
+      instance.activePollingInterval = null;
+    }
+
+    // Explicitly reset the download button UI
+    instance.element.classList.remove("completed", "downloading", "error", "failed");
+    updatePillVisuals(instance);
+
+    const menu = instance.element.querySelector(".menu-content");
+    if (menu) menu.innerHTML = "";
+    
+    // Reset sizing from menu expansion
+    instance.element.style.width = "";
+    instance.element.style.height = "";
+    schedulePositionUpdate();
+  }
+
+  // Retry video detection — the new player may not be in the DOM yet
+  let retries = 0;
+  const maxRetries = 5;
+  const retryDelay = 500; // ms
+
+  function retryDetection() {
+    const videos = document.querySelectorAll("video");
+    if (videos.length > 0) {
+      videos.forEach(processVideoElement);
+      console.log(`${LOG} Found ${videos.length} video(s) after navigation (attempt ${retries + 1})`);
+      return;
+    }
+    retries++;
+    if (retries < maxRetries) {
+      setTimeout(retryDetection, retryDelay);
+    } else {
+      console.log(`${LOG} No videos found after ${maxRetries} retries`);
+    }
+  }
+
+  // First attempt after a short delay for the DOM to settle
+  setTimeout(retryDetection, 300);
+}
+
+// Signal 1: YouTube's custom navigation event (fastest for YouTube)
+let isAwake = false;
+
+function wakeUp() {
+  if (isAwake) return;
+  isAwake = true;
+  console.log(`${LOG} Video detected. Waking up dormant script in ${window.location.href}`);
+  init();
+}
+
+function detectVideo(e) {
+  if (e && e.target && e.target.tagName === 'VIDEO') {
+    wakeUp();
+  }
+}
+
+function dispatchPreWarm() {
+  const normUrl = normalizeUrl(window.location.href);
+  if (!preWarmSent || preWarmUrl !== normUrl) {
+    if (normUrl.includes("youtube.com") && !normUrl.includes("watch?v=")) return;
+    preWarmUrl = normUrl;
+    preWarmSent = true;
+    console.log(`[THUNDER] Sending PRE_WARM_URL for: ${preWarmUrl}`);
+    chrome.runtime.sendMessage({ action: "PRE_WARM_URL", url: preWarmUrl });
+  }
+}
+
+window.addEventListener("yt-navigate-finish", onSpaNavigation);
+
+const _origPushState = history.pushState;
+const _origReplaceState = history.replaceState;
+history.pushState = function(...args) {
+  _origPushState.apply(this, args);
+  onSpaNavigation();
+};
+history.replaceState = function(...args) {
+  _origReplaceState.apply(this, args);
+  onSpaNavigation();
+};
+
+window.addEventListener("popstate", onSpaNavigation);
+
+// Polling fallback
+setInterval(() => {
+  if (window.location.href !== _lastKnownUrl) {
+    onSpaNavigation();
+  }
+}, 500);
+
+// Pill persistence
+setInterval(() => {
+  const videos = document.querySelectorAll("video");
+  for (const v of videos) {
+    if (!pillRegistry.has(v)) {
+      const rect = v.getBoundingClientRect();
+      if (rect.width >= 150 && rect.height >= 150) {
+        processVideoElement(v);
+      }
+    }
+  }
+}, 2000);
+
+// Stay dormant until a video is explicitly detected
+if (document.querySelector("video")) {
+  wakeUp();
+} else {
+  document.addEventListener("play", detectVideo, true);
+  document.addEventListener("playing", detectVideo, true);
+  document.addEventListener("loadedmetadata", detectVideo, true);
+  document.addEventListener("canplay", detectVideo, true);
+}
+
+// Initial pre-warm attempt immediately on script injection
+dispatchPreWarm();

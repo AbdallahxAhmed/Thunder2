@@ -128,7 +128,7 @@ A user navigates to a page with multiple video elements of varying sizes (e.g., 
 - **FR-007**: Pill position MUST be calculated using `getBoundingClientRect()` on the associated `<video>` element, anchoring to the top-right corner by default.
 - **FR-008**: Position updates from scroll, resize, and DOM layout changes MUST be batched through `requestAnimationFrame` to prevent synchronous DOM thrashing.
 - **FR-009**: A `ResizeObserver` MUST be attached to each tracked `<video>` to detect size changes (e.g., fullscreen transitions) and re-position + re-classify (full/mini/hidden) the pill.
-- **FR-010**: The host element (`#uhdd-host`) MUST use `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 2147483647;` to escape host page stacking contexts.
+- **FR-010**: The host element (`#thunder-host`) MUST use `position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 2147483647;` to escape host page stacking contexts.
 
 #### Size-Adaptive UI
 

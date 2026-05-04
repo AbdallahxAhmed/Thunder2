@@ -20,6 +20,8 @@ class DownloadStatus(str, enum.Enum):
     DOWNLOADING = "downloading"
     COMPLETED = "completed"
     FAILED = "failed"
+    PAUSED = "paused"
+    CANCELLED = "cancelled"
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +35,10 @@ class DownloadRequest(BaseModel):
     """Incoming download submission from the browser extension."""
 
     url: str = Field(..., min_length=1, description="Download URL")
-    cookies: Optional[str] = Field(default=None, description="Raw cookie header")
+    cookies: Optional[Any] = Field(
+        default=None,
+        description="Browser cookies — either a raw header string or array of Chrome cookie objects",
+    )
     user_agent: Optional[str] = Field(default=None, description="Custom User-Agent")
     drm_keys: Optional[str] = Field(
         default=None, description="KID:KEY hex pair(s) for DRM decryption (comma-separated for multiple)"
@@ -118,9 +123,22 @@ class DownloadJob(BaseModel):
     status: DownloadStatus = DownloadStatus.QUEUED
     progress: Optional[float] = None
     speed: Optional[str] = None
+    eta: Optional[int] = None
     output_path: Optional[str] = None
     file_size: Optional[int] = None
     error: Optional[str] = None
+    group_id: Optional[str] = None
+    format_id: Optional[str] = None
+    title: Optional[str] = None
+    cookies: Optional[str] = None
+    user_agent: Optional[str] = None
+    referer: Optional[str] = None
+    page_url: Optional[str] = None
+    drm_keys: Optional[str] = None
+    pssh: Optional[str] = None
+    license_url: Optional[str] = None
+    priority: int = 0
+    retry_count: int = 0
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
@@ -128,6 +146,19 @@ class DownloadJob(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc)
     )
     aria2_gid: Optional[str] = None
+
+class DownloadGroup(BaseModel):
+    """Tracks a group of download jobs (e.g., a playlist)."""
+    id: str
+    name: str
+    source_url: Optional[str] = None
+    status: str = "active"
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +231,22 @@ class QualityOption(BaseModel):
     badge: Optional[str] = Field(
         default=None, description="Optional badge text (e.g. 'HD', '4K', 'HQ')"
     )
+    vcodec: Optional[str] = Field(default=None, description="Video codec prefix")
+    acodec: Optional[str] = Field(default=None, description="Audio codec prefix")
+    ext: Optional[str] = Field(default=None, description="File extension (e.g. 'MP4')")
+    filesize: Optional[int] = Field(default=None, description="Approx file size in bytes")
+    resolution: Optional[str] = Field(default=None, description="Resolution string (e.g. '1920x1080')")
+    fps: Optional[int] = Field(default=None, description="Video frames per second")
+    size_mb: Optional[float] = Field(default=None, description="Calculated file size in Megabytes")
+    engine: Optional[str] = Field(default=None, description="Explicit engine override (e.g. 'm3u8')")
 
+
+class InfoRequest(BaseModel):
+    """Incoming request for media format extraction."""
+    url: str = Field(..., min_length=1)
+    drm_hint: bool = Field(default=False)
+    cookies: Optional[Any] = Field(default=None)
+    user_agent: Optional[str] = Field(default=None)
 
 class InfoResponse(BaseModel):
     """Response for GET /api/info."""
@@ -218,3 +264,102 @@ class InfoResponse(BaseModel):
     duration: Optional[float] = None
     max_height: Optional[int] = None
     options: list[QualityOption] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Phase 7: Queue Management API models
+# ---------------------------------------------------------------------------
+
+
+class JobActionResponse(BaseModel):
+    """Response for job action endpoints (pause, resume, cancel, retry, delete)."""
+
+    id: str
+    action: str
+    status: str
+    message: str = ""
+
+
+class JobListItem(BaseModel):
+    """Single item in the paginated job list."""
+
+    id: str
+    url: str
+    engine: str
+    status: str
+    progress: Optional[float] = None
+    speed: Optional[str] = None
+    eta: Optional[int] = None
+    output_path: Optional[str] = None
+    file_size: Optional[int] = None
+    error: Optional[str] = None
+    group_id: Optional[str] = None
+    title: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class JobListResponse(BaseModel):
+    """Paginated response for GET /api/jobs."""
+
+    jobs: list[JobListItem]
+    total: int
+    limit: int
+    offset: int
+
+
+class GroupCreateRequest(BaseModel):
+    """Request body for POST /api/groups."""
+
+    name: str = Field(..., min_length=1)
+    source_url: Optional[str] = None
+    urls: list[str] = Field(default_factory=list, description="URLs to add as jobs")
+    engine: Optional[str] = Field(default=None, description="Engine override for all jobs")
+
+
+class GroupListItem(BaseModel):
+    """Summary of a group for listing."""
+
+    id: str
+    name: str
+    source_url: Optional[str] = None
+    status: str
+    total_jobs: int = 0
+    completed_jobs: int = 0
+    failed_jobs: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class GroupListResponse(BaseModel):
+    """Paginated response for GET /api/groups."""
+
+    groups: list[GroupListItem]
+    total: int
+
+
+class GroupDetailResponse(BaseModel):
+    """Detailed group response with job list."""
+
+    id: str
+    name: str
+    source_url: Optional[str] = None
+    status: str
+    jobs: list[JobListItem] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class SettingsResponse(BaseModel):
+    """Response for GET /api/settings."""
+
+    settings: dict[str, str]
+
+
+class SettingsUpdateRequest(BaseModel):
+    """Request body for PUT /api/settings."""
+
+    settings: dict[str, str] = Field(
+        ..., description="Key-value pairs to update"
+    )
+

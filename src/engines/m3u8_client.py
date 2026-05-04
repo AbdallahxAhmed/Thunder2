@@ -218,25 +218,36 @@ class M3u8Client:
 
         # ── Step 3: Execute ───────────────────────────────────────────
         try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=3600
+            import time
+            process = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
             )
-
+            
+            # Poll process and check for cancellation
+            while process.poll() is None:
+                if getattr(job, '_cancel_flag', False):
+                    process.terminate()
+                    process.wait(timeout=5)
+                    raise InterruptedError("Job was cancelled by QueueManager")
+                time.sleep(1)
+                
+            stdout, stderr = process.communicate()
+            
             # Log captured output
-            if result.stdout:
+            if stdout:
                 logger.debug(
                     "N_m3u8DL-RE stdout: %s",
-                    result.stdout[:2000],
+                    stdout[:2000],
                     extra={"download_id": job.id, "engine": "m3u8"},
                 )
-            if result.stderr:
+            if stderr:
                 logger.debug(
                     "N_m3u8DL-RE stderr: %s",
-                    result.stderr[:2000],
+                    stderr[:2000],
                     extra={"download_id": job.id, "engine": "m3u8"},
                 )
 
-            if result.returncode == 0:
+            if process.returncode == 0:
                 # Look for output file
                 output_path = os.path.join(save_dir, save_name)
                 # N_m3u8DL-RE may append an extension
@@ -268,7 +279,7 @@ class M3u8Client:
                     "file_size": file_size,
                 }
             else:
-                error_msg = result.stderr.strip() or f"N_m3u8DL-RE exited with code {result.returncode}"
+                error_msg = stderr.strip() or f"N_m3u8DL-RE exited with code {process.returncode}"
                 logger.error(
                     "N_m3u8DL-RE failed: %s — %s",
                     job.id,

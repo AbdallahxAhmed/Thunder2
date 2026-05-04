@@ -74,7 +74,7 @@ def setup_logging(log_dir: str = "logs", log_level: str = "INFO") -> None:
 
     # File handler — structured JSON logs
     file_handler = logging.FileHandler(
-        os.path.join(log_dir, "uhdd.log"), encoding="utf-8"
+        os.path.join(log_dir, "thunder.log"), encoding="utf-8"
     )
     file_handler.setFormatter(formatter)
     file_handler.addFilter(redaction_filter)

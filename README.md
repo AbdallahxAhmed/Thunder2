@@ -1,4 +1,4 @@
-# Dark Downloader (UHDD) — Unified Headless Download Daemon
+# Thunder — Universal Headless DRM Downloader
 
 > **v3.14.4** — Production-stable DRM decryption, CDN bypass, and intelligent naming pipeline.
 
@@ -51,7 +51,7 @@ The system operates as a three-tier hybrid pipeline:
                                     HTTP POST /api/download
                                                 │
 ┌───────────────────────────────────────────────▼─────────────┐
-│               UHDD Daemon (FastAPI @ :8000)                  │
+│               Thunder Daemon (FastAPI @ :8000)               │
 │                                                             │
 │  ┌──────────┐  ┌──────────────┐  ┌────────────────────────┐ │
 │  │  Router  │  │ Job Manager  │  │   Engine Registry      │ │
@@ -148,8 +148,8 @@ pip install fastapi uvicorn httpx pywidevine pydantic requests
 
 ```bash
 # 1. Clone and install
-git clone <repo-url> dark-downloader
-cd dark-downloader
+git clone <repo-url> thunder
+cd thunder
 pip install -r requirements.txt
 
 # 2. Start the daemon
@@ -247,7 +247,7 @@ Page loads → eme_hook.js injects into MAIN world
   → Hooks MediaKeySession.update (attempts key ripping)
   → Intercepts fetch/XHR (captures license URL + headers)
   → Strict binary filter: only ArrayBuffer/Uint8Array bodies
-  → Dispatches "uhdd_payload_ready" CustomEvent
+  → Dispatches "thunder_payload_ready" CustomEvent
   → bridge.js relays to background.js
   → Stored in tabBuffers[tabId]
 ```
@@ -309,7 +309,7 @@ Sensitive data (Authorization headers, DRM keys) are redacted in production logs
 ### Phase 2: Frontend Progress UI
 - [ ] Real-time download progress via WebSocket or Server-Sent Events (SSE)
 - [ ] Progress bars in the floating pill UI (percentage, speed, ETA)
-- [ ] Download history panel in the popup
+- [ ] Download history panel in the floating UI
 - [ ] Toast notifications for completion/failure
 
 ### Phase 3: Pause/Resume

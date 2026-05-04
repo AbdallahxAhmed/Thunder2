@@ -15,6 +15,7 @@ env/
 # Runtime directories
 downloads/
 logs/
+data/
 
 # IDE
 .vscode/

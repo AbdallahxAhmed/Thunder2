@@ -14,7 +14,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import yt_dlp
@@ -22,7 +22,8 @@ import yt_dlp
 from src.config import settings
 from src.engines import ENGINE_MAP, _register_defaults, get_engine
 from src.health import check_all_engines
-from src.job_manager import job_manager
+from src.queue_manager import queue_manager, ActiveJobState
+from src.event_bus import event_bus
 from src.logger import correlation_id, setup_logging
 from src.models import (
     DownloadRequest,
@@ -31,8 +32,18 @@ from src.models import (
     ErrorResponse,
     HealthResponse,
     StatusResponse,
+    InfoRequest,
     InfoResponse,
     QualityOption,
+    JobActionResponse,
+    JobListItem,
+    JobListResponse,
+    GroupCreateRequest,
+    GroupListItem,
+    GroupListResponse,
+    GroupDetailResponse,
+    SettingsResponse,
+    SettingsUpdateRequest,
 )
 from src.router import classify
 
@@ -51,6 +62,9 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle hook."""
     global _start_time, _engine_health
 
+    # Initialize QueueManager FIRST — binds asyncio primitives to the running loop
+    await queue_manager.start()
+
     # Logging
     setup_logging(log_dir=settings.log_dir, log_level=settings.log_level)
 
@@ -65,22 +79,26 @@ async def lifespan(app: FastAPI):
     _engine_health = await asyncio.to_thread(check_all_engines)
     available = [e for e in _engine_health if e.available]
     logger.info(
-        "UHDD started — %d/%d engines available",
+        "Thunder started — %d/%d engines available",
         len(available),
         len(_engine_health),
         extra={"event": "daemon.startup"},
     )
 
     _start_time = time.time()
+
     yield
-    logger.info("UHDD shutting down", extra={"event": "daemon.shutdown"})
+
+    # Shutdown QueueManager (cancels scheduler, cleans up)
+    await queue_manager.shutdown()
+    logger.info("Thunder shutting down", extra={"event": "daemon.shutdown"})
 
 
 # ── App ───────────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Dark Downloader — UHDD",
-    description="Unified Headless Download Daemon",
+    title="Thunder",
+    description="Universal Headless DRM Downloader",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -121,85 +139,7 @@ async def request_correlation_middleware(request: Request, call_next):
     return response
 
 
-# ── Download orchestrator ─────────────────────────────────────────────────
-
-
-async def _execute_download(job_id: str, request: DownloadRequest) -> None:
-    """Run a download in a background thread and update the job store."""
-    job = await job_manager.get_job(job_id)
-    if job is None:
-        return
-
-    engine = get_engine(job.engine)
-    if engine is None:
-        await job_manager.update_job(
-            job_id,
-            status=DownloadStatus.FAILED,
-            error=f"Engine '{job.engine}' is not registered",
-        )
-        return
-
-    await job_manager.update_job(job_id, status=DownloadStatus.DOWNLOADING)
-    logger.info(
-        "Download started: %s via %s",
-        job_id,
-        job.engine,
-        extra={
-            "download_id": job_id,
-            "engine": job.engine,
-            "event": "download.started",
-        },
-    )
-
-    try:
-        result = await asyncio.to_thread(engine.execute, job, request)
-
-        if result.get("status") == "completed":
-            await job_manager.update_job(
-                job_id,
-                status=DownloadStatus.COMPLETED,
-                progress=100.0,
-                output_path=result.get("output_path"),
-                file_size=result.get("file_size"),
-            )
-            logger.info(
-                "Download completed: %s → %s",
-                job_id,
-                result.get("output_path"),
-                extra={
-                    "download_id": job_id,
-                    "engine": job.engine,
-                    "event": "download.completed",
-                },
-            )
-        else:
-            error_msg = result.get("error", "Unknown engine error")
-            await job_manager.update_job(
-                job_id, status=DownloadStatus.FAILED, error=error_msg
-            )
-            logger.error(
-                "Download failed: %s — %s",
-                job_id,
-                error_msg,
-                extra={
-                    "download_id": job_id,
-                    "engine": job.engine,
-                    "event": "download.failed",
-                },
-            )
-    except Exception as exc:
-        await job_manager.update_job(
-            job_id, status=DownloadStatus.FAILED, error=str(exc)
-        )
-        logger.exception(
-            "Download crashed: %s",
-            job_id,
-            extra={
-                "download_id": job_id,
-                "engine": job.engine,
-                "event": "download.failed",
-            },
-        )
+# ── Download orchestration is now handled by QueueManager ─────────────────
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────
@@ -233,15 +173,15 @@ async def submit_download(request: DownloadRequest) -> JSONResponse:
             },
         )
 
-    job = await job_manager.create_job(url=request.url, engine=engine_name)
-
-    # Fire-and-forget background task
-    asyncio.create_task(_execute_download(job.id, request))
+    job_id = str(uuid.uuid4())
+    job = await queue_manager.create_job(
+        job_id=job_id, url=request.url, engine=engine_name,
+    )
 
     return JSONResponse(
         status_code=202,
         content=DownloadResponse(
-            id=job.id,
+            id=job.job_id,
             status=job.status.value,
             engine=engine_name,
         ).model_dump(),
@@ -251,7 +191,7 @@ async def submit_download(request: DownloadRequest) -> JSONResponse:
 @app.get("/api/download/{job_id}")
 async def get_download_status(job_id: str) -> JSONResponse:
     """Query the current status of a download job."""
-    job = await job_manager.get_job(job_id)
+    job = await queue_manager.get_job(job_id)
     if job is None:
         return JSONResponse(
             status_code=404,
@@ -262,7 +202,7 @@ async def get_download_status(job_id: str) -> JSONResponse:
         )
     return JSONResponse(
         content=StatusResponse(
-            id=job.id,
+            id=job.job_id,
             url=job.url,
             engine=job.engine,
             status=job.status.value,
@@ -278,11 +218,27 @@ async def get_download_status(job_id: str) -> JSONResponse:
 
 
 @app.get("/api/info", response_model=InfoResponse)
-async def get_media_info(
+async def get_media_info_compat(
     url: str = Query(..., min_length=1),
-    drm_hint: bool = Query(
-        default=False, description="Hint that DRM/manifest signals were detected"
-    ),
+    drm_hint: bool = Query(default=False),
+) -> JSONResponse:
+    """GET variant for backward compatibility (curl, tests)."""
+    return await _get_media_info(url=url, drm_hint=drm_hint, cookies=None, user_agent=None)
+
+
+@app.post("/api/info", response_model=InfoResponse)
+async def post_media_info(request: InfoRequest) -> JSONResponse:
+    """POST variant — receives cookie objects and user agent from the extension."""
+    return await _get_media_info(
+        url=request.url,
+        drm_hint=request.drm_hint,
+        cookies=request.cookies,
+        user_agent=request.user_agent,
+    )
+
+
+async def _get_media_info(
+    *, url: str, drm_hint: bool, cookies: list | None, user_agent: str | None
 ) -> JSONResponse:
     """Query available formats for a media URL via yt-dlp.
 
@@ -302,7 +258,9 @@ async def get_media_info(
         )
 
     try:
-        info = await asyncio.to_thread(engine.extract_info, url)
+        info = await asyncio.to_thread(
+            engine.extract_info, url, cookies=cookies, user_agent=user_agent
+        )
     except yt_dlp.utils.DownloadError as exc:
         if drm_hint:
             resp = InfoResponse(
@@ -321,14 +279,14 @@ async def get_media_info(
         )
         return JSONResponse(content=resp.model_dump(mode="json"))
     except Exception as exc:
-        logger.exception("Unexpected error in /api/info")
-        return JSONResponse(
-            status_code=500,
-            content=ErrorResponse(
-                error_code="INTERNAL_ERROR",
-                message=str(exc),
-            ).model_dump(),
+        logger.warning("Unsupported URL in /api/info: %s — %s", url, exc)
+        resp = InfoResponse(
+            url=url,
+            status="unsupported",
+            reason=str(exc),
+            options=[],
         )
+        return JSONResponse(content=resp.model_dump(mode="json"))
 
     # ── Analyse available video formats ────────────────────────────────
     # Collect the set of heights that actually exist, along with codec
@@ -340,11 +298,29 @@ async def get_media_info(
     best_tbr_per_height: dict[int, float] = {}   # height → best total bitrate
 
     for f in info.get("formats", []):
-        h = f.get("height")
         vcodec = f.get("vcodec") or ""
-        if not h or not isinstance(h, (int, float)) or vcodec == "none":
+        # Skip audio-only (vcodec explicitly "none") and mhtml pseudo-formats
+        if vcodec == "none" or vcodec == "mhtml":
             continue
-        h = int(h)
+
+        # Robust height extraction
+        h = f.get("height")
+        # Accept int, float, or numeric string
+        if h is not None:
+            try:
+                h = int(h)
+            except (ValueError, TypeError):
+                h = None
+        # Fallback: parse from "resolution" field (e.g. "1920x1080")
+        if not h:
+            res = f.get("resolution") or ""
+            if "x" in res:
+                try:
+                    h = int(res.split("x")[-1])
+                except (ValueError, IndexError):
+                    pass
+        if not h or h < 1:
+            continue
         available_heights.add(h)
 
         # Score codec
@@ -361,66 +337,162 @@ async def get_media_info(
 
     max_height = max(available_heights) if available_heights else 0
 
-    # ── Build opinionated quality tiers ────────────────────────────────
-    # Full resolution ladder — only tiers the source supports.
-    # The max resolution is folded into "Best Quality (Xp)" and its
-    # standalone tier is suppressed to avoid redundancy.
-    TIERS = [
-        (2160, "4K (2160p)", "4K"),
-        (1440, "1440p",      "QHD"),
-        (1080, "1080p",      "HD"),
-        (720,  "720p",       "HD"),
-        (480,  "480p",       None),
-        (360,  "360p",       None),
-        (240,  "240p",       None),
-        (144,  "144p",       None),
-    ]
+    if not available_heights:
+        # If no video formats were extracted, something went wrong with the engine
+        # or it's an audio-only stream that we don't currently support.
+        resp = InfoResponse(
+            url=url,
+            status="unsupported",
+            reason="No usable video formats found",
+            options=[],
+        )
+        return JSONResponse(content=resp.model_dump(mode="json"))
 
-    # Map height → human label for the "Best Quality" heading
-    height_labels = {h: lbl for h, lbl, _ in TIERS}
-    best_label_suffix = height_labels.get(max_height, f"{max_height}p") if max_height > 0 else ""
+    # ── Build quality options from real extracted formats ─────────────────
+    # Pick the best video format per height (highest tbr), use its real
+    # format_id so yt-dlp can resolve it directly during download.
+
+    # Collect best format per height
+    best_format_per_height: dict[int, dict] = {}
+    for f in info.get("formats", []):
+        vc = f.get("vcodec") or ""
+        
+        # Robust height extraction
+        h = f.get("height")
+        if h is not None:
+            try:
+                h = int(h)
+            except (ValueError, TypeError):
+                h = None
+        if not h:
+            res = f.get("resolution") or ""
+            if "x" in res:
+                try:
+                    h = int(res.split("x")[-1])
+                except (ValueError, IndexError):
+                    pass
+                    
+        # Skip pseudo-formats or audio-only (vcodec="none" AND no height)
+        if vc == "mhtml" or (vc == "none" and not h):
+            continue
+        if not h or h < 1:
+            continue
+            
+        fps = f.get("fps") or 0
+        vc_lower = vc.lower()
+        is_mp4 = "avc1" in vc_lower or "mp4" in vc_lower or "h264" in vc_lower
+        tbr = f.get("tbr") or 0
+        protocol = (f.get("protocol") or "").lower()
+        is_m3u8 = "m3u8" in protocol
+        
+        url_lower = url.lower()
+        is_youtube = "youtube.com" in url_lower or "youtu.be" in url_lower
+        
+        if is_youtube:
+            # YouTube: Penalize m3u8 to prefer raw MP4/WEBM
+            score = (0 if is_m3u8 else 1, fps, 1 if is_mp4 else 0, tbr)
+        else:
+            # CloudNative/Dailymotion/Generic: Prioritize m3u8
+            score = (1 if is_m3u8 else 0, fps, tbr)
+        
+        prev = best_format_per_height.get(h)
+        if not prev:
+            best_format_per_height[h] = f
+        else:
+            prev_fps = prev.get("fps") or 0
+            prev_vc = (prev.get("vcodec") or "").lower()
+            prev_is_mp4 = "avc1" in prev_vc or "mp4" in prev_vc or "h264" in prev_vc
+            prev_tbr = prev.get("tbr") or 0
+            prev_protocol = (prev.get("protocol") or "").lower()
+            prev_is_m3u8 = "m3u8" in prev_protocol
+            
+            if is_youtube:
+                prev_score = (0 if prev_is_m3u8 else 1, prev_fps, 1 if prev_is_mp4 else 0, prev_tbr)
+            else:
+                prev_score = (1 if prev_is_m3u8 else 0, prev_fps, prev_tbr)
+            
+            if score > prev_score:
+                best_format_per_height[h] = f
 
     options: list[QualityOption] = []
 
-    # Lead with merged "Best Quality (Xp)"
-    best_badge = "4K" if max_height >= 2160 else "HD" if max_height >= 720 else None
-    options.append(QualityOption(
-        label=f"Best Quality ({best_label_suffix})" if best_label_suffix else "Best Quality",
-        format_id="bestvideo+bestaudio/best",
-        type="video",
-        badge=best_badge,
-    ))
+    # Sorted height tiers descending
+    for h in sorted(best_format_per_height.keys(), reverse=True):
+        fmt = best_format_per_height[h]
+        raw_fid = str(fmt.get("format_id", ""))
+        ac = fmt.get("acodec") or "none"
+        
+        # If it's a video-only format, we must append +bestaudio/best
+        if ac == "none":
+            fid = f"{raw_fid}+bestaudio/best"
+        else:
+            fid = raw_fid
 
-    # Resolution tiers — skip the tier that matches max_height (already
-    # covered by "Best Quality") to eliminate the redundant button.
-    for height, label, badge in TIERS:
-        if height == max_height:
-            continue  # folded into Best Quality above
-        if max_height >= height:
-            # If best codec at this height is vp9/av01 → mark as HQ
-            bc = best_codec_per_height.get(height, "")
-            effective_badge = badge
-            if bc in ("av01", "vp9", "vp09") and height >= 720:
-                effective_badge = "HQ" if badge is None else badge
+        fps = fmt.get("fps")
+        if fps is not None:
+            try:
+                fps = int(fps)
+            except (ValueError, TypeError):
+                fps = None
 
-            options.append(QualityOption(
-                label=label,
-                format_id=f"bestvideo[height<={height}]+bestaudio/best",
-                type="video",
-                badge=effective_badge,
-            ))
+        ext = (fmt.get("ext") or "mp4").upper()
+        
+        # Smart Size Calculation
+        bytes_val = fmt.get("filesize")
+        if not bytes_val:
+            bytes_val = fmt.get("filesize_approx")
+        if not bytes_val and fmt.get("tbr") and info.get("duration"):
+            bytes_val = int((fmt.get("tbr") * 1000 / 8) * info.get("duration"))
+        
+        size_mb = round(bytes_val / (1024 * 1024), 1) if bytes_val else None
+        
+        label = f"{h}p"
+
+        badge = None
+        if h >= 2160:
+            badge = "4K"
+        elif h >= 1440:
+            badge = "QHD"
+        elif h >= 1080:
+            badge = "HD"
+        elif h >= 720:
+            badge = "HQ"
+
+        vc = (fmt.get("vcodec") or "").split(".")[0].lower()
+        
+        # Explicit Engine Routing
+        protocol = (fmt.get("protocol") or "").lower()
+        format_engine = "m3u8" if not is_youtube and "m3u8" in protocol else "ytdlp"
+
+        options.append(QualityOption(
+            label=label,
+            format_id=fid,
+            type="video",
+            badge=badge,
+            vcodec=vc or None,
+            ext=ext,
+            filesize=bytes_val,
+            resolution=fmt.get("resolution"),
+            fps=fps,
+            size_mb=size_mb,
+            engine=format_engine,
+        ))
 
     # Always offer Audio Only
     options.append(QualityOption(
-        label="Audio Only (best)",
+        label="Audio Only (M4A/MP3)",
         format_id="bestaudio/best",
         type="audio",
-        badge=None,
+        badge="Audio",
+        engine="ytdlp",
     ))
+    
+    suggested_engine = "ytdlp" if is_youtube else "m3u8"
 
     resp = InfoResponse(
         url=url,
         status="ok",
+        suggested_engine=suggested_engine,
         title=info.get("title"),
         thumbnail=info.get("thumbnail"),
         duration=info.get("duration"),
@@ -450,3 +522,348 @@ async def health_check() -> JSONResponse:
             engines=[e.model_dump() for e in _engine_health],
         ).model_dump(),
     )
+
+
+# ── Phase 7: Queue Management REST API ────────────────────────────────────
+
+
+@app.get("/api/jobs", response_model=JobListResponse)
+async def list_jobs(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    status: str | None = Query(default=None),
+    engine: str | None = Query(default=None),
+    group_id: str | None = Query(default=None),
+) -> JSONResponse:
+    """Paginated, filterable list of all jobs."""
+    jobs = await queue_manager.list_jobs(
+        limit=limit, offset=offset, status=status, engine=engine, group_id=group_id
+    )
+    total = await queue_manager.count_jobs(status=status, engine=engine, group_id=group_id)
+
+    items = [
+        JobListItem(
+            id=j.job_id,
+            url=j.url,
+            engine=j.engine,
+            status=j.status.value if isinstance(j.status, DownloadStatus) else j.status,
+            progress=j.progress,
+            speed=j.speed,
+            eta=j.eta,
+            output_path=j.output_path,
+            file_size=j.file_size,
+            error=j.error,
+            group_id=j.group_id,
+            title=j.title,
+            created_at=j.created_at,
+            updated_at=j.updated_at,
+        )
+        for j in jobs
+    ]
+
+    return JSONResponse(
+        content=JobListResponse(
+            jobs=items, total=total, limit=limit, offset=offset
+        ).model_dump(mode="json")
+    )
+
+
+@app.post("/api/jobs/{job_id}/pause", response_model=JobActionResponse)
+async def pause_job(job_id: str) -> JSONResponse:
+    """Pause a downloading job."""
+    try:
+        await queue_manager.pause_job(job_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="INVALID_STATE_TRANSITION", message=str(e)
+            ).model_dump(),
+        )
+    return JSONResponse(
+        content=JobActionResponse(
+            id=job_id, action="pause", status="paused", message="Job paused"
+        ).model_dump()
+    )
+
+
+@app.post("/api/jobs/{job_id}/resume", response_model=JobActionResponse)
+async def resume_job(job_id: str) -> JSONResponse:
+    """Resume a paused job."""
+    try:
+        await queue_manager.resume_job(job_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="INVALID_STATE_TRANSITION", message=str(e)
+            ).model_dump(),
+        )
+    return JSONResponse(
+        content=JobActionResponse(
+            id=job_id, action="resume", status="queued", message="Job resumed"
+        ).model_dump()
+    )
+
+
+@app.post("/api/jobs/{job_id}/cancel", response_model=JobActionResponse)
+async def cancel_job(job_id: str) -> JSONResponse:
+    """Cancel a job."""
+    try:
+        await queue_manager.cancel_job(job_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="INVALID_STATE_TRANSITION", message=str(e)
+            ).model_dump(),
+        )
+    return JSONResponse(
+        content=JobActionResponse(
+            id=job_id, action="cancel", status="cancelled", message="Job cancelled"
+        ).model_dump()
+    )
+
+
+@app.post("/api/jobs/{job_id}/retry", response_model=JobActionResponse)
+async def retry_job(job_id: str) -> JSONResponse:
+    """Retry a failed job."""
+    try:
+        await queue_manager.retry_job(job_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="INVALID_STATE_TRANSITION", message=str(e)
+            ).model_dump(),
+        )
+    return JSONResponse(
+        content=JobActionResponse(
+            id=job_id, action="retry", status="queued", message="Job retried"
+        ).model_dump()
+    )
+
+
+@app.delete("/api/jobs/{job_id}", response_model=JobActionResponse)
+async def delete_job(job_id: str) -> JSONResponse:
+    """Delete a job."""
+    job = await queue_manager.get_job(job_id)
+    if job is None:
+        return JSONResponse(
+            status_code=404,
+            content=ErrorResponse(
+                error_code="JOB_NOT_FOUND",
+                message=f"No download job found with ID: {job_id}",
+            ).model_dump(),
+        )
+    await queue_manager.delete_job(job_id)
+    return JSONResponse(
+        content=JobActionResponse(
+            id=job_id, action="delete", status="deleted", message="Job deleted"
+        ).model_dump()
+    )
+
+
+# ── Groups ────────────────────────────────────────────────────────────────
+
+
+@app.post("/api/groups", status_code=201, response_model=GroupDetailResponse)
+async def create_group(request: GroupCreateRequest) -> JSONResponse:
+    """Create a download group, optionally with initial jobs."""
+    group_id = str(uuid.uuid4())
+    group = await queue_manager.create_group(
+        group_id=group_id, name=request.name, source_url=request.source_url
+    )
+
+    # Create child jobs if URLs provided
+    engine_override = request.engine
+    for url in request.urls:
+        job_engine = engine_override or classify(url)
+        job_id = str(uuid.uuid4())
+        await queue_manager.create_job(
+            job_id=job_id, url=url, engine=job_engine, group_id=group_id
+        )
+
+    # Fetch full group with jobs
+    detail = await queue_manager.get_group(group_id)
+    jobs = [
+        JobListItem(
+            id=j["id"], url=j["url"], engine=j["engine"], status=j["status"],
+            progress=j.get("progress"), speed=j.get("speed"), eta=j.get("eta"),
+            output_path=j.get("output_path"), file_size=j.get("file_size"),
+            error=j.get("error"), group_id=j.get("group_id"), title=j.get("title"),
+            created_at=j["created_at"], updated_at=j["updated_at"],
+        )
+        for j in (detail.get("jobs", []) if detail else [])
+    ]
+
+    return JSONResponse(
+        status_code=201,
+        content=GroupDetailResponse(
+            id=group_id, name=request.name, source_url=request.source_url,
+            status="active", jobs=jobs,
+            created_at=group["created_at"], updated_at=group["updated_at"],
+        ).model_dump(mode="json"),
+    )
+
+
+@app.get("/api/groups", response_model=GroupListResponse)
+async def list_groups() -> JSONResponse:
+    """List all groups with aggregate counts."""
+    rows = await queue_manager.list_groups()
+    items = [
+        GroupListItem(
+            id=r["id"], name=r["name"], source_url=r.get("source_url"),
+            status=r["status"], total_jobs=r.get("total_jobs", 0),
+            completed_jobs=r.get("completed_jobs", 0),
+            failed_jobs=r.get("failed_jobs", 0),
+            created_at=r["created_at"], updated_at=r["updated_at"],
+        )
+        for r in rows
+    ]
+    return JSONResponse(
+        content=GroupListResponse(groups=items, total=len(items)).model_dump(mode="json")
+    )
+
+
+@app.get("/api/groups/{group_id}", response_model=GroupDetailResponse)
+async def get_group(group_id: str) -> JSONResponse:
+    """Get a group with its jobs."""
+    detail = await queue_manager.get_group(group_id)
+    if detail is None:
+        return JSONResponse(
+            status_code=404,
+            content=ErrorResponse(
+                error_code="GROUP_NOT_FOUND",
+                message=f"No group found with ID: {group_id}",
+            ).model_dump(),
+        )
+    jobs = [
+        JobListItem(
+            id=j["id"], url=j["url"], engine=j["engine"], status=j["status"],
+            progress=j.get("progress"), speed=j.get("speed"), eta=j.get("eta"),
+            output_path=j.get("output_path"), file_size=j.get("file_size"),
+            error=j.get("error"), group_id=j.get("group_id"), title=j.get("title"),
+            created_at=j["created_at"], updated_at=j["updated_at"],
+        )
+        for j in detail.get("jobs", [])
+    ]
+    return JSONResponse(
+        content=GroupDetailResponse(
+            id=detail["id"], name=detail["name"],
+            source_url=detail.get("source_url"), status=detail["status"],
+            jobs=jobs, created_at=detail["created_at"],
+            updated_at=detail["updated_at"],
+        ).model_dump(mode="json")
+    )
+
+
+@app.post("/api/groups/{group_id}/pause", response_model=JobActionResponse)
+async def pause_group(group_id: str) -> JSONResponse:
+    """Pause all downloading jobs in a group."""
+    count = await queue_manager.pause_group(group_id)
+    return JSONResponse(
+        content=JobActionResponse(
+            id=group_id, action="pause_group", status="paused",
+            message=f"Paused {count} job(s)",
+        ).model_dump()
+    )
+
+
+@app.post("/api/groups/{group_id}/resume", response_model=JobActionResponse)
+async def resume_group(group_id: str) -> JSONResponse:
+    """Resume all paused jobs in a group."""
+    count = await queue_manager.resume_group(group_id)
+    return JSONResponse(
+        content=JobActionResponse(
+            id=group_id, action="resume_group", status="active",
+            message=f"Resumed {count} job(s)",
+        ).model_dump()
+    )
+
+
+@app.delete("/api/groups/{group_id}", response_model=JobActionResponse)
+async def delete_group(group_id: str) -> JSONResponse:
+    """Delete a group and dissociate its jobs."""
+    deleted = await queue_manager.delete_group(group_id)
+    if not deleted:
+        return JSONResponse(
+            status_code=404,
+            content=ErrorResponse(
+                error_code="GROUP_NOT_FOUND",
+                message=f"No group found with ID: {group_id}",
+            ).model_dump(),
+        )
+    return JSONResponse(
+        content=JobActionResponse(
+            id=group_id, action="delete_group", status="deleted",
+            message="Group deleted",
+        ).model_dump()
+    )
+
+
+# ── Settings ──────────────────────────────────────────────────────────────
+
+
+@app.get("/api/settings", response_model=SettingsResponse)
+async def get_settings() -> JSONResponse:
+    """Get all runtime settings."""
+    settings_data = await queue_manager.get_settings()
+    return JSONResponse(
+        content=SettingsResponse(settings=settings_data).model_dump()
+    )
+
+
+@app.put("/api/settings", response_model=SettingsResponse)
+async def update_settings(request: SettingsUpdateRequest) -> JSONResponse:
+    """Update runtime settings (concurrency limits, etc.)."""
+    # Validate concurrency limits
+    for key, value in request.settings.items():
+        if "limit" in key or "concurrent" in key:
+            try:
+                int_val = int(value)
+                if int_val < 1:
+                    return JSONResponse(
+                        status_code=422,
+                        content=ErrorResponse(
+                            error_code="VALIDATION_ERROR",
+                            message=f"Setting '{key}' must be >= 1, got {value}",
+                        ).model_dump(),
+                    )
+            except ValueError:
+                return JSONResponse(
+                    status_code=422,
+                    content=ErrorResponse(
+                        error_code="VALIDATION_ERROR",
+                        message=f"Setting '{key}' must be an integer, got '{value}'",
+                    ).model_dump(),
+                )
+    updated = await queue_manager.update_settings(request.settings)
+    return JSONResponse(
+        content=SettingsResponse(settings=updated).model_dump()
+    )
+
+
+# ── Admin Endpoints ──────────────────────────────────────────────────────
+
+@app.post("/api/admin/clear-queue")
+async def clear_queue() -> JSONResponse:
+    """Emergency endpoint: cancel all non-terminal jobs and wipe the queue."""
+    count = await queue_manager.clear_all_jobs()
+    return JSONResponse(content={"cleared": count, "message": f"Cancelled {count} jobs"})
+
+
+# ── Phase 8: WebSocket Event Bus ─────────────────────────────────────────
+
+@app.websocket("/api/ws/events")
+async def websocket_endpoint(websocket: WebSocket):
+    """Real-time event stream for GUI clients (read-only)."""
+    await websocket.accept()
+    await event_bus.connect(websocket)
+    try:
+        while True:
+            # Consume and discard client messages (read-only enforcement)
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await event_bus.disconnect(websocket)
+

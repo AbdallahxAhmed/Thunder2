@@ -1,12 +1,93 @@
 /**
- * UHDD Service Worker — Background Script
+ * Thunder Service Worker — Background Script
  * Manages per-tab interception buffers, dispatches to daemon, shows notifications.
  * Implements zero-latency pre-fetching of format info for supported media sites.
  */
 
 const DAEMON_URL = "http://localhost:8000/api/download";
 const DAEMON_INFO_URL = "http://localhost:8000/api/info";
-const LOG = "[UHDD SW]";
+const DAEMON_WS_URL = "ws://localhost:8000/api/ws/events";
+const DAEMON_API_URL = "http://localhost:8000/api";
+const LOG = "[Thunder SW]";
+
+// ─── WebSocket Event Bus ────────────────────────────────────────────────
+
+let ws = null;
+let wsReconnectTimer = null;
+let wsKeepAliveTimer = null;
+let wsBackoffMs = 1000;
+
+function connectWebSocket() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  
+  console.log(`${LOG} Connecting to Event Bus...`);
+  ws = new WebSocket(DAEMON_WS_URL);
+  
+  ws.onopen = () => {
+    console.log(`${LOG} Event Bus connected`);
+    wsBackoffMs = 1000; // reset backoff
+    if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+    
+    // Prevent SW from sleeping via keep-alive ping
+    if (wsKeepAliveTimer) clearInterval(wsKeepAliveTimer);
+    wsKeepAliveTimer = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        // Dummy ping to keep SW active and connection open (read-only enforced on backend)
+        ws.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 25000);
+  };
+  
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      // Broadcast to all active content scripts
+      chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+          chrome.tabs.sendMessage(tab.id, { type: "WS_EVENT", payload: data }).catch(() => {});
+        });
+      });
+    } catch (e) {
+      console.error(`${LOG} WS parse error:`, e);
+    }
+  };
+  
+  ws.onclose = () => {
+    console.log(`${LOG} Event Bus disconnected. Reconnecting in ${wsBackoffMs}ms...`);
+    if (wsKeepAliveTimer) clearInterval(wsKeepAliveTimer);
+    ws = null;
+    wsReconnectTimer = setTimeout(connectWebSocket, wsBackoffMs);
+    wsBackoffMs = Math.min(wsBackoffMs * 2, 30000);
+  };
+  
+  ws.onerror = (err) => {
+    // onclose will handle reconnect
+  };
+}
+
+// Init WS
+connectWebSocket();
+
+// ─── Cookie Helper (IDM-style seamless injection) ────────────────────────
+
+async function getCookiesForUrl(url) {
+  try {
+    const cookies = await chrome.cookies.getAll({ url });
+    // Return full cookie objects for Netscape cookie file generation
+    return cookies.map(c => ({
+      domain: c.domain,
+      name: c.name,
+      value: c.value,
+      path: c.path,
+      secure: c.secure,
+      httpOnly: c.httpOnly,
+      expirationDate: c.expirationDate || 0
+    }));
+  } catch (e) {
+    console.warn(`${LOG} Failed to get cookies for ${url}:`, e);
+    return [];
+  }
+}
 
 // ─── Anti-Loop Guard ────────────────────────────────────────────────────
 
@@ -33,11 +114,23 @@ function getBuffer(tabId) {
 }
 
 // ─── Format Info Cache ────────────────────────────────────────────────
-// Keyed by tabId → { url, data, ts, status }
+// Keyed by exact url → { url, data, ts, status, drmHint }
 // status: "ready" | "fetching" | "error"
 
 const formatCache = new Map();
 const CACHE_TTL_MS = 300_000;
+
+function normalizeUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    const v = url.searchParams.get("v");
+    url.search = v ? `?v=${v}` : "";
+    url.hash = "";
+    return url.toString();
+  } catch (e) {
+    return rawUrl;
+  }
+}
 
 function isCacheMatch(entry, url, drmHint) {
   return entry && entry.url === url && entry.drmHint === drmHint;
@@ -49,9 +142,9 @@ function isCacheFresh(entry) {
 
 
 
-// ─── Dispatch to UHDD Daemon ──────────────────────────────────────────
+// ─── Dispatch to Thunder Daemon ──────────────────────────────────────────
 
-async function dispatchToUHDD(tabId) {
+async function dispatchToThunder(tabId) {
   const buffer = tabBuffers.get(tabId);
   if (!buffer || !buffer.manifestUrl) return;
 
@@ -99,7 +192,7 @@ async function dispatchToUHDD(tabId) {
       chrome.notifications.create({
         type: "basic",
         iconUrl: "icons/icon48.png",
-        title: "UHDD: Download Queued",
+        title: "Thunder: Download Queued",
         message: `${url.substring(0, 50)}… → ${engine}`,
       });
     } else {
@@ -110,8 +203,8 @@ async function dispatchToUHDD(tabId) {
     chrome.notifications.create({
       type: "basic",
       iconUrl: "icons/icon48.png",
-      title: "UHDD: Backend Offline",
-      message: "Could not reach UHDD daemon at localhost:8000",
+      title: "Thunder: Backend Offline",
+      message: "Could not reach Thunder daemon at localhost:8000",
     });
   }
 }
@@ -120,23 +213,11 @@ async function dispatchToUHDD(tabId) {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabBuffers.delete(tabId);
-  formatCache.delete(tabId);
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // SPA URL change — invalidate stale cache
-  if (changeInfo.url && tab.url) {
-    const cached = formatCache.get(tabId);
-    if (cached && cached.url !== tab.url) {
-      console.log(`${LOG} URL changed for tab ${tabId}, invalidating cache`);
-      formatCache.delete(tabId);
-    }
-    return;
-  }
-
   if (changeInfo.status === "loading") {
     tabBuffers.delete(tabId);
-    formatCache.delete(tabId);
   }
 });
 
@@ -155,7 +236,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       buffer.manifestUrl = message.url;
       buffer.drmHint = buffer.drmHint || Boolean(message.drmHint);
       if (message.title) buffer.title = message.title;
-      // NOTE: NO dispatchToUHDD() — user must explicitly trigger download
+      // NOTE: NO dispatchToThunder() — user must explicitly trigger download
       return;
     } else if (message.type === "drm_package") {
       console.log(`${LOG} [tab ${tabId}] DRM package cached (no auto-dispatch)`);
@@ -166,7 +247,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.drmKeys) buffer.drmKeys = message.drmKeys;
       buffer.drmHint = true;
       if (message.title) buffer.title = message.title;
-      // NOTE: NO dispatchToUHDD() — user must explicitly trigger download
+      // NOTE: NO dispatchToThunder() — user must explicitly trigger download
       return;
     }
   }
@@ -174,22 +255,75 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle messages from the popup or content script
   if (message.type === "getFormats" || message.action === "GET_HYBRID_STREAMS" || message.action === "PRE_WARM_URL") {
     const tabId = message.tabId ?? sender.tab?.id;
-    // Prefer the tab's main-frame URL (sender.tab.url) over message.url.
-    // When the message originates from an iframe, message.url is the iframe's
-    // own URL (e.g. geo.dailymotion.com/player/…) which yt-dlp cannot handle.
-    // sender.tab.url is always the real top-level page URL.
-    // For popup messages sender.tab is undefined, so we fall back to message.url.
-    const url = sender.tab?.url ?? message.url;
+    // For SPA sites like YouTube, sender.tab.url may lag behind during
+    // navigation.  message.url comes from window.location.href in the
+    // content script and is always up-to-date.  Prefer it when available.
+    const urlRaw = message.url || sender.tab?.url;
 
-    if (!tabId || !url) {
+    if (!tabId || !urlRaw) {
       sendResponse({ ok: false, error: "Missing tab context" });
       return true;
     }
 
-    const cached = formatCache.get(tabId);
+    const url = normalizeUrl(urlRaw);
+
+    const cached = formatCache.get(url);
     const buffer = tabBuffers.get(tabId);
     const hasRawStream = buffer && !!buffer.manifestUrl;
     const drmHint = buffer ? buffer.drmHint : false;
+
+    // ── PRE_WARM_URL: fire-and-forget cache population ────────────
+    // No sendResponse — the content script doesn't listen for a reply.
+    if (message.action === "PRE_WARM_URL") {
+      // Already cached or currently fetching? Skip.
+      if (cached && (cached.status === "fetching" || (isCacheMatch(cached, url, drmHint) && isCacheFresh(cached)))) {
+        return false; // no async response needed
+      }
+
+      // Pre-filter
+      const urlLower = url.toLowerCase();
+      const SKIP_PREFIXES = ["chrome://", "chrome-extension://"];
+      const SKIP_SUFFIXES = [".jpg", ".png", ".css"];
+      if (SKIP_PREFIXES.some(p => urlLower.startsWith(p)) ||
+          SKIP_SUFFIXES.some(s => urlLower.endsWith(s))) {
+        return false;
+      }
+
+      console.log(`[THUNDER] Received PRE_WARM_URL, starting fetch for: ${url}`);
+      formatCache.set(url, { url, data: null, ts: 0, status: "fetching", drmHint });
+
+      getCookiesForUrl(url).then(cookieObjects => {
+        const infoPayload = {
+          url: url,
+          drm_hint: drmHint,
+          user_agent: navigator.userAgent,
+          cookies: cookieObjects.length > 0 ? cookieObjects : undefined
+        };
+
+        fetch(DAEMON_INFO_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(30_000),
+          body: JSON.stringify(infoPayload)
+        })
+          .then(resp => {
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return resp.json();
+          })
+          .then(data => {
+            formatCache.set(url, { url, data, ts: Date.now(), status: "ready", drmHint });
+            console.log(`[THUNDER] PRE_WARM: cached formats successfully for ${url}`);
+          })
+          .catch(err => {
+            console.error(`[THUNDER] PRE_WARM failed completely for ${url}:`, err);
+            formatCache.set(url, { url, data: null, ts: Date.now(), status: "error", drmHint });
+          });
+      });
+
+      return false; // no async response needed
+    }
+
+    // ── GET_HYBRID_STREAMS / getFormats ────────────────────────────
 
     function sendHybridResponse(data, fromCache) {
       const payload = {
@@ -226,7 +360,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       let waited = 0;
       const poll = setInterval(() => {
         waited += 100;
-        const entry = formatCache.get(tabId);
+        const entry = formatCache.get(url);
         if (!entry || waited > 30_000) {
           clearInterval(poll);
           if (hasRawStream) sendHybridResponse(null, false);
@@ -244,23 +378,51 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     // ── Cache MISS — fetch now ───────────────────────────────────────
+    // Pre-filter: skip non-media URLs that will always fail
+    const SKIP_PREFIXES = ["chrome://", "chrome-extension://"];
+    const SKIP_SUFFIXES = [".jpg", ".png", ".css"];
+    const urlLower = url.toLowerCase();
+    if (SKIP_PREFIXES.some(p => urlLower.startsWith(p)) ||
+        SKIP_SUFFIXES.some(s => urlLower.endsWith(s))) {
+      console.log(`${LOG} Skipping unsupported URL: ${url}`);
+      if (hasRawStream) sendHybridResponse(null, false);
+      else sendResponse({ ok: false, error: "Unsupported URL" });
+      return true;
+    }
+
     console.log(`${LOG} Format cache MISS for tab ${tabId}, fetching…`);
-    formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
-    fetch(`${DAEMON_INFO_URL}?url=${encodeURIComponent(url)}&drm_hint=${drmHint ? "true" : "false"}`, { signal: AbortSignal.timeout(30_000) })
-      .then(resp => {
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return resp.json();
+    formatCache.set(url, { url, data: null, ts: 0, status: "fetching", drmHint });
+    
+    getCookiesForUrl(url).then(cookieObjects => {
+      // POST cookies as JSON body instead of header to avoid size limits
+      const infoPayload = {
+        url: url,
+        drm_hint: drmHint,
+        user_agent: navigator.userAgent,
+        cookies: cookieObjects.length > 0 ? cookieObjects : undefined
+      };
+      
+      fetch(DAEMON_INFO_URL, { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify(infoPayload)
       })
-      .then(data => {
-        formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready", drmHint });
-        sendHybridResponse(data, false);
-      })
-      .catch(err => {
-        console.error(`${LOG} /api/info failed:`, err);
-        formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error", drmHint });
-        if (hasRawStream) sendHybridResponse(null, false);
-        else sendResponse({ ok: false, error: err.message });
-      });
+        .then(resp => {
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          return resp.json();
+        })
+        .then(data => {
+          formatCache.set(url, { url, data, ts: Date.now(), status: "ready", drmHint });
+          sendHybridResponse(data, false);
+        })
+        .catch(err => {
+          console.error(`${LOG} /api/info failed:`, err);
+          formatCache.set(url, { url, data: null, ts: Date.now(), status: "error", drmHint });
+          if (hasRawStream) sendHybridResponse(null, false);
+          else sendResponse({ ok: false, error: err.message });
+        });
+    });
 
     return true; // keep channel open for async response
   }
@@ -317,10 +479,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     console.log(`${LOG} Triggering download from content script:`, payload);
     
-    fetch(DAEMON_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    // IDM-style: inject browser cookies and user-agent into the payload as objects
+    payload.user_agent = navigator.userAgent;
+    const targetUrl = payload.page_url || payload.url;
+    getCookiesForUrl(targetUrl).then(cookieObjects => {
+      if (cookieObjects.length > 0) payload.cookies = cookieObjects;
+      
+      return fetch(DAEMON_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
     })
     .then(resp => {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -332,7 +501,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.notifications.create({
         type: "basic",
         iconUrl: "icons/icon48.png",
-        title: "UHDD: Download Queued",
+        title: "Thunder: Download Queued",
         message: `${payload.url.substring(0, 50)}… → ${engine}`,
       });
       sendResponse({ ok: true, data });
@@ -342,13 +511,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.notifications.create({
         type: "basic",
         iconUrl: "icons/icon48.png",
-        title: "UHDD: Backend Offline",
-        message: "Could not reach UHDD daemon at localhost:8000",
+        title: "Thunder: Backend Offline",
+        message: "Could not reach Thunder daemon at localhost:8000",
       });
       sendResponse({ ok: false, error: err.message });
     });
 
     return true; // keep channel open for async response
+  }
+  
+  // Handle REST Actions from Dumb UI
+  if (["ACTION_PAUSE", "ACTION_RESUME", "ACTION_CANCEL"].includes(message.action)) {
+    const jobId = message.jobId;
+    if (!jobId) {
+      sendResponse({ ok: false, error: "Missing jobId" });
+      return true;
+    }
+    
+    const command = message.action.split("_")[1].toLowerCase(); // pause, resume, cancel
+    
+    fetch(`${DAEMON_API_URL}/jobs/${jobId}/${command}`, {
+      method: "POST"
+    })
+    .then(resp => {
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    })
+    .then(data => sendResponse({ ok: true, data }))
+    .catch(err => {
+      console.error(`${LOG} REST action ${command} failed:`, err);
+      sendResponse({ ok: false, error: err.message });
+    });
+    
+    return true;
   }
 });
 
@@ -383,16 +578,9 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
   console.log(`${LOG} Intercepting native download: ${url}`);
 
   // 3. Extract metadata
-  const referer = downloadItem.referrer || "";
-  const userAgent = navigator.userAgent;
-  let cookieString = "";
-
-  try {
-    const cookies = await chrome.cookies.getAll({ url: url });
-    cookieString = cookies.map(c => `${c.name}=${c.value}`).join("; ");
-  } catch (err) {
-    console.warn(`${LOG} Failed to get cookies for ${url}:`, err);
-  }
+   const referer = downloadItem.referrer || "";
+    const userAgent = navigator.userAgent;
+    const cookieObjects = await getCookiesForUrl(url);
 
   // 4. Build payload
   const payload = {
@@ -402,7 +590,7 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
 
   if (referer) payload.referer = referer;
   if (userAgent) payload.user_agent = userAgent;
-  if (cookieString) payload.cookies = cookieString;
+  if (cookieObjects.length > 0) payload.cookies = cookieObjects;
 
   // 5. Dispatch to daemon
   try {
@@ -429,7 +617,7 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
       chrome.notifications.create({
         type: "basic",
         iconUrl: "icons/icon48.png",
-        title: "UHDD: Download Hijacked",
+        title: "Thunder: Download Hijacked",
         message: `${url.substring(0, 50)}… → ${data.engine}`,
       });
     } else {
@@ -440,8 +628,8 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
     chrome.notifications.create({
       type: "basic",
       iconUrl: "icons/icon48.png",
-      title: "UHDD: Backend Offline",
-      message: "Could not reach UHDD daemon. Download proceeding natively.",
+      title: "Thunder: Backend Offline",
+      message: "Could not reach Thunder daemon. Download proceeding natively.",
     });
     // We don't cancel the download, so it falls back to Chrome gracefully
   }
