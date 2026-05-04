@@ -83,7 +83,6 @@ class YtdlpClient:
                     "quiet": True,
                     "cookiesfrombrowser": (self._get_browser(user_agent),),
                     "extractor_args": {"youtube": ["client=IOS,ANDROID_VR", "player_client=ios,android"]},
-                    "format": "bestvideo+bestaudio/best",
                     "remote_components": ["ejs:github"],
                 }
                 with yt_dlp.YoutubeDL(auth_opts) as ydl:
