@@ -348,62 +348,79 @@ async def _get_media_info(
         )
         return JSONResponse(content=resp.model_dump(mode="json"))
 
-    # ── Build opinionated quality tiers ────────────────────────────────
-    # Full resolution ladder — only tiers the source supports.
-    # The max resolution is folded into "Best Quality (Xp)" and its
-    # standalone tier is suppressed to avoid redundancy.
-    TIERS = [
-        (2160, "4K (2160p)", "4K"),
-        (1440, "1440p",      "QHD"),
-        (1080, "1080p",      "HD"),
-        (720,  "720p",       "HD"),
-        (480,  "480p",       None),
-        (360,  "360p",       None),
-        (240,  "240p",       None),
-        (144,  "144p",       None),
-    ]
+    # ── Build quality options from real extracted formats ─────────────────
+    # Pick the best video format per height (highest tbr), use its real
+    # format_id so yt-dlp can resolve it directly during download.
 
-    # Map height → human label for the "Best Quality" heading
-    height_labels = {h: lbl for h, lbl, _ in TIERS}
-    # Snap non-standard heights (e.g. 1920 from portrait/rotated videos)
-    # to the nearest standard tier to avoid labels like "1920p".
-    display_height = max_height
-    if max_height > 0 and max_height not in height_labels:
-        tier_heights = sorted(height_labels.keys())
-        # Find the largest standard tier ≤ max_height
-        candidates = [t for t in tier_heights if t <= max_height]
-        display_height = candidates[-1] if candidates else max_height
-    best_label_suffix = height_labels.get(display_height, f"{display_height}p") if max_height > 0 else ""
+    # Collect best format per height
+    best_format_per_height: dict[int, dict] = {}
+    for f in info.get("formats", []):
+        vc = f.get("vcodec") or ""
+        if vc == "none" or vc == "mhtml":
+            continue
+        h = f.get("height")
+        if h is not None:
+            try:
+                h = int(h)
+            except (ValueError, TypeError):
+                h = None
+        if not h:
+            res = f.get("resolution") or ""
+            if "x" in res:
+                try:
+                    h = int(res.split("x")[-1])
+                except (ValueError, IndexError):
+                    pass
+        if not h or h < 1:
+            continue
+        tbr = f.get("tbr") or 0
+        prev = best_format_per_height.get(h)
+        if not prev or tbr > (prev.get("tbr") or 0):
+            best_format_per_height[h] = f
 
     options: list[QualityOption] = []
 
-    # Lead with merged "Best Quality (Xp)"
+    # Lead with "Best Quality" using bestvideo+bestaudio (yt-dlp resolves this)
     best_badge = "4K" if max_height >= 2160 else "HD" if max_height >= 720 else None
     options.append(QualityOption(
-        label=f"Best Quality ({best_label_suffix})" if best_label_suffix else "Best Quality",
+        label=f"Best Quality ({max_height}p)",
         format_id="bestvideo+bestaudio/best",
         type="video",
         badge=best_badge,
     ))
 
-    # Resolution tiers — skip the tier that matches max_height (already
-    # covered by "Best Quality") to eliminate the redundant button.
-    for height, label, badge in TIERS:
-        if height == max_height:
-            continue  # folded into Best Quality above
-        if height in available_heights:
-            # If best codec at this height is vp9/av01 → mark as HQ
-            bc = best_codec_per_height.get(height, "")
-            effective_badge = badge
-            if bc in ("av01", "vp9", "vp09") and height >= 720:
-                effective_badge = "HQ" if badge is None else badge
+    # Sorted height tiers descending, skip the max (already covered above)
+    for h in sorted(best_format_per_height.keys(), reverse=True):
+        if h == max_height:
+            continue
+        fmt = best_format_per_height[h]
+        fid = fmt.get("format_id", f"bestvideo[height<={h}]+bestaudio/best")
 
-            options.append(QualityOption(
-                label=label,
-                format_id=f"bestvideo[height<={height}]+bestaudio/best",
-                type="video",
-                badge=effective_badge,
-            ))
+        badge = None
+        if h >= 2160:
+            badge = "4K"
+        elif h >= 1440:
+            badge = "QHD"
+        elif h >= 1080:
+            badge = "HD"
+        elif h >= 720:
+            badge = "HQ"
+
+        vc = (fmt.get("vcodec") or "").split(".")[0].lower()
+        ext = (fmt.get("ext") or "mp4").upper()
+        size = fmt.get("filesize") or fmt.get("filesize_approx")
+        size_str = f"{size / 1024 / 1024:.1f} MB" if size else None
+
+        options.append(QualityOption(
+            label=f"{h}p",
+            format_id=f"{fid}+bestaudio/best",
+            type="video",
+            badge=badge,
+            vcodec=vc or None,
+            ext=ext,
+            filesize=size,
+            resolution=fmt.get("resolution"),
+        ))
 
     # Always offer Audio Only
     options.append(QualityOption(

@@ -231,6 +231,11 @@ class QualityOption(BaseModel):
     badge: Optional[str] = Field(
         default=None, description="Optional badge text (e.g. 'HD', '4K', 'HQ')"
     )
+    vcodec: Optional[str] = Field(default=None, description="Video codec prefix")
+    acodec: Optional[str] = Field(default=None, description="Audio codec prefix")
+    ext: Optional[str] = Field(default=None, description="File extension (e.g. 'MP4')")
+    filesize: Optional[int] = Field(default=None, description="Approx file size in bytes")
+    resolution: Optional[str] = Field(default=None, description="Resolution string (e.g. '1920x1080')")
 
 
 class InfoRequest(BaseModel):
