@@ -6,7 +6,67 @@
 
 const DAEMON_URL = "http://localhost:8000/api/download";
 const DAEMON_INFO_URL = "http://localhost:8000/api/info";
+const DAEMON_WS_URL = "ws://localhost:8000/api/ws/events";
+const DAEMON_API_URL = "http://localhost:8000/api";
 const LOG = "[Thunder SW]";
+
+// ─── WebSocket Event Bus ────────────────────────────────────────────────
+
+let ws = null;
+let wsReconnectTimer = null;
+let wsKeepAliveTimer = null;
+let wsBackoffMs = 1000;
+
+function connectWebSocket() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  
+  console.log(`${LOG} Connecting to Event Bus...`);
+  ws = new WebSocket(DAEMON_WS_URL);
+  
+  ws.onopen = () => {
+    console.log(`${LOG} Event Bus connected`);
+    wsBackoffMs = 1000; // reset backoff
+    if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+    
+    // Prevent SW from sleeping via keep-alive ping
+    if (wsKeepAliveTimer) clearInterval(wsKeepAliveTimer);
+    wsKeepAliveTimer = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        // Dummy ping to keep SW active and connection open (read-only enforced on backend)
+        ws.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 25000);
+  };
+  
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      // Broadcast to all active content scripts
+      chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+          chrome.tabs.sendMessage(tab.id, { type: "WS_EVENT", payload: data }).catch(() => {});
+        });
+      });
+    } catch (e) {
+      console.error(`${LOG} WS parse error:`, e);
+    }
+  };
+  
+  ws.onclose = () => {
+    console.log(`${LOG} Event Bus disconnected. Reconnecting in ${wsBackoffMs}ms...`);
+    if (wsKeepAliveTimer) clearInterval(wsKeepAliveTimer);
+    ws = null;
+    wsReconnectTimer = setTimeout(connectWebSocket, wsBackoffMs);
+    wsBackoffMs = Math.min(wsBackoffMs * 2, 30000);
+  };
+  
+  ws.onerror = (err) => {
+    // onclose will handle reconnect
+  };
+}
+
+// Init WS
+connectWebSocket();
 
 // ─── Anti-Loop Guard ────────────────────────────────────────────────────
 
@@ -361,6 +421,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
 
     return true; // keep channel open for async response
+  }
+  
+  // Handle REST Actions from Dumb UI
+  if (["ACTION_PAUSE", "ACTION_RESUME", "ACTION_CANCEL"].includes(message.action)) {
+    const jobId = message.jobId;
+    if (!jobId) {
+      sendResponse({ ok: false, error: "Missing jobId" });
+      return true;
+    }
+    
+    const command = message.action.split("_")[1].toLowerCase(); // pause, resume, cancel
+    
+    fetch(`${DAEMON_API_URL}/jobs/${jobId}/${command}`, {
+      method: "POST"
+    })
+    .then(resp => {
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    })
+    .then(data => sendResponse({ ok: true, data }))
+    .catch(err => {
+      console.error(`${LOG} REST action ${command} failed:`, err);
+      sendResponse({ ok: false, error: err.message });
+    });
+    
+    return true;
   }
 });
 

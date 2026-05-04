@@ -42,6 +42,12 @@ function init() {
   setupGlobalTracking();
   setupGlobalInteractions();
   setupVideoDetection();
+  
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === "WS_EVENT") {
+      handleWsEvent(msg.payload);
+    }
+  });
 }
 
 function injectHost() {
@@ -304,6 +310,9 @@ function createPill(video) {
     cachedUrl: null,
     cachedData: null,
     menuHoverTimer: null,
+    jobId: null,
+    jobStatus: null,
+    jobProgress: 0,
   };
 
   const wrapper = document.createElement("div");
@@ -312,6 +321,7 @@ function createPill(video) {
   const pillContent = document.createElement("div");
   pillContent.className = "pill-content";
   pillContent.innerHTML = `
+    <div class="pill-progress-ring"></div>
     <svg class="pill-icon" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
     <span class="pill-text">Download</span>
   `;
@@ -415,14 +425,16 @@ function openMenu(instance) {
   const menu = instance.element.querySelector(".menu-content");
   const videoUrl = window.location.href;
 
-  if (instance.cachedUrl === videoUrl && instance.cachedData) {
+  if (instance.jobId) {
+    renderActiveDownload(instance);
+  } else if (instance.cachedUrl === videoUrl && instance.cachedData) {
     renderFormats(instance, instance.cachedData);
   } else {
     menu.innerHTML = '<div class="loading-text">Fetching formats...</div>';
 
     // Predictive rendering: instantly render raw M3U8 if available
     chrome.runtime.sendMessage({ action: "GET_RAW_STREAM" }, (rawResp) => {
-      if (rawResp && rawResp.ok && instance.state === STATE_MENU) {
+      if (rawResp && rawResp.ok && instance.state === STATE_MENU && !instance.jobId) {
         const fakeData = {
           options: [
             {
@@ -453,7 +465,7 @@ function openMenu(instance) {
           instance.cachedData = response.data;
         }
 
-        if (instance.state !== STATE_MENU) return;
+        if (instance.state !== STATE_MENU || instance.jobId) return;
         if (chrome.runtime.lastError || !response || !response.ok) {
           if (!menu.querySelector(".format-btn")) {
             menu.innerHTML = `<div class="loading-text" style="color: var(--accent-red)">Failed to fetch formats</div>`;
@@ -674,8 +686,52 @@ function setupGlobalInteractions() {
           setTimeout(() => closeMenu(targetInstance), 1500);
           return;
         }
+        
+        targetInstance.jobId = response.data.id;
+        targetInstance.jobStatus = response.data.status || 'queued';
+        updatePillVisuals(targetInstance);
         closeMenu(targetInstance);
       },
+    );
+  });
+
+  // Handle REST Action button clicks
+  uiContainer.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pill-action-btn");
+    if (!btn) return;
+    
+    const instanceElement = btn.closest(".pill-instance");
+    if (!instanceElement) return;
+
+    let targetInstance = null;
+    for (const inst of pillRegistry.values()) {
+      if (inst.element === instanceElement) {
+        targetInstance = inst;
+        break;
+      }
+    }
+    if (!targetInstance || !targetInstance.jobId) return;
+
+    let actionCmd = null;
+    if (btn.classList.contains("pause")) actionCmd = "ACTION_PAUSE";
+    if (btn.classList.contains("resume")) actionCmd = "ACTION_RESUME";
+    if (btn.classList.contains("cancel")) actionCmd = "ACTION_CANCEL";
+    if (!actionCmd) return;
+
+    btn.classList.add("dispatching");
+
+    chrome.runtime.sendMessage(
+      { action: actionCmd, jobId: targetInstance.jobId },
+      (response) => {
+        btn.classList.remove("dispatching");
+        if (chrome.runtime.lastError || (response && !response.ok)) {
+          console.error(`${LOG} ${actionCmd} failed:`, response ? response.error : "Unknown error");
+        } else {
+          targetInstance.jobStatus = response.data.status;
+          updatePillVisuals(targetInstance);
+          if (targetInstance.state === STATE_MENU) renderActiveDownload(targetInstance);
+        }
+      }
     );
   });
 }
@@ -727,6 +783,106 @@ function sanitizePageTitle() {
   clean = clean.replace(/\s+/g, " ");
   if (clean.length > 200) clean = clean.substring(0, 200).trim();
   return clean || null;
+}
+
+// ─── Phase 8.5 UI Integration ──────────────────────────────────────────
+
+function renderActiveDownload(instance) {
+  const menu = instance.element.querySelector(".menu-content");
+  
+  let statusText = instance.jobStatus.toUpperCase();
+  let progressText = instance.jobProgress > 0 ? `${instance.jobProgress.toFixed(1)}%` : "";
+  let statusColor = "var(--text-primary)";
+  
+  if (instance.jobStatus === "downloading") statusColor = "var(--accent-green)";
+  if (instance.jobStatus === "paused") statusColor = "var(--accent-yellow)";
+  if (instance.jobStatus === "failed") statusColor = "var(--accent-red)";
+  
+  let actionsHtml = "";
+  if (["queued", "downloading"].includes(instance.jobStatus)) {
+    actionsHtml = `
+      <div class="pill-actions">
+        <button class="pill-action-btn pause">Pause</button>
+        <button class="pill-action-btn cancel">Cancel</button>
+      </div>
+    `;
+  } else if (instance.jobStatus === "paused") {
+    actionsHtml = `
+      <div class="pill-actions">
+        <button class="pill-action-btn resume">Resume</button>
+        <button class="pill-action-btn cancel">Cancel</button>
+      </div>
+    `;
+  }
+  
+  menu.innerHTML = `
+    <div class="section-label">Active Download</div>
+    <div style="padding: var(--space-md) var(--space-lg); display: flex; justify-content: space-between; align-items: center;">
+      <span style="color: ${statusColor}; font-weight: 700;">${statusText}</span>
+      <span style="font-family: var(--font-mono); color: var(--text-secondary);">${progressText}</span>
+    </div>
+    ${actionsHtml}
+  `;
+}
+
+function updatePillVisuals(instance) {
+  const textEl = instance.element.querySelector(".pill-text");
+  const ringEl = instance.element.querySelector(".pill-progress-ring");
+  
+  if (!instance.jobId) {
+    textEl.innerText = "Download";
+    ringEl.style.background = "transparent";
+    return;
+  }
+  
+  if (instance.jobStatus === "downloading") {
+    textEl.innerText = `${instance.jobProgress.toFixed(0)}%`;
+    ringEl.style.background = `conic-gradient(var(--accent-green) ${instance.jobProgress}%, transparent 0%)`;
+  } else {
+    textEl.innerText = instance.jobStatus.charAt(0).toUpperCase() + instance.jobStatus.slice(1);
+    if (instance.jobStatus === "paused") {
+      ringEl.style.background = `conic-gradient(var(--accent-yellow) ${instance.jobProgress}%, transparent 0%)`;
+    } else {
+      ringEl.style.background = "transparent";
+    }
+  }
+}
+
+function handleWsEvent(payload) {
+  if (!payload || !payload.type || !payload.data) return;
+  const eventData = payload.data;
+  
+  if (payload.type === "snapshot") {
+    if (eventData.jobs) {
+      for (const instance of pillRegistry.values()) {
+        if (instance.jobId) {
+          const match = eventData.jobs.find(j => j.id === instance.jobId);
+          if (match) {
+            instance.jobStatus = match.status;
+            instance.jobProgress = match.progress || 0;
+            updatePillVisuals(instance);
+            if (instance.state === STATE_MENU) renderActiveDownload(instance);
+          }
+        }
+      }
+    }
+    return;
+  }
+  
+  for (const instance of pillRegistry.values()) {
+    if (instance.jobId === eventData.id) {
+      if (payload.type === "job.state_changed") {
+        instance.jobStatus = eventData.status;
+      } else if (payload.type === "job.progress") {
+        instance.jobProgress = eventData.progress || 0;
+      }
+      
+      updatePillVisuals(instance);
+      if (instance.state === STATE_MENU) {
+        renderActiveDownload(instance);
+      }
+    }
+  }
 }
 
 init();
