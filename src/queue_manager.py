@@ -216,20 +216,37 @@ class QueueManager:
         """Background task evaluating the queue."""
         import logging
         _log = logging.getLogger(__name__)
+        _log.info("Scheduler loop started")
+        heartbeat_interval = 30
+        last_heartbeat = 0
         while True:
             try:
-                await self._queue_wakeup_event.wait()
+                # Use a timeout so we wake up periodically even if no event fires
+                try:
+                    await asyncio.wait_for(self._queue_wakeup_event.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
                 self._queue_wakeup_event.clear()
-                # Small debounce so rapid-fire creates are batched
-                await asyncio.sleep(0.05)
+
+                # Heartbeat logging
+                import time as _time
+                now = _time.monotonic()
+                if now - last_heartbeat >= heartbeat_interval:
+                    active, _ = self._count_active_slots()
+                    queued = sum(1 for s in self._hot_cache.values() if s.status == DownloadStatus.QUEUED)
+                    _log.info(
+                        "Scheduler heartbeat: %d active, %d queued, %d cached",
+                        active, queued, len(self._hot_cache),
+                    )
+                    last_heartbeat = now
+
                 await self._promote_next()
-                # Re-check: if new jobs arrived during promote, loop again
-                if self._queue_wakeup_event.is_set():
-                    continue
             except asyncio.CancelledError:
+                _log.info("Scheduler loop cancelled")
                 break
             except Exception as e:
                 _log.error("Scheduler loop error: %s", e, exc_info=True)
+                await asyncio.sleep(1)  # back off on error
 
     async def _on_job_finished(self):
         """Called when a job reaches a terminal/paused state."""

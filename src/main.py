@@ -62,6 +62,9 @@ async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle hook."""
     global _start_time, _engine_health
 
+    # Initialize QueueManager FIRST — binds asyncio primitives to the running loop
+    await queue_manager.start()
+
     # Logging
     setup_logging(log_dir=settings.log_dir, log_level=settings.log_level)
 
@@ -83,9 +86,6 @@ async def lifespan(app: FastAPI):
     )
 
     _start_time = time.time()
-
-    # Initialize QueueManager (creates DB, loads cache, starts scheduler)
-    await queue_manager.start()
 
     yield
 

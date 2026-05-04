@@ -255,12 +255,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Handle messages from the popup or content script
   if (message.type === "getFormats" || message.action === "GET_HYBRID_STREAMS" || message.action === "PRE_WARM_URL") {
     const tabId = message.tabId ?? sender.tab?.id;
-    // Prefer the tab's main-frame URL (sender.tab.url) over message.url.
-    // When the message originates from an iframe, message.url is the iframe's
-    // own URL (e.g. geo.dailymotion.com/player/…) which yt-dlp cannot handle.
-    // sender.tab.url is always the real top-level page URL.
-    // For popup messages sender.tab is undefined, so we fall back to message.url.
-    const url = sender.tab?.url ?? message.url;
+    // For SPA sites like YouTube, sender.tab.url may lag behind during
+    // navigation.  message.url comes from window.location.href in the
+    // content script and is always up-to-date.  Prefer it when available.
+    const url = message.url || sender.tab?.url;
 
     if (!tabId || !url) {
       sendResponse({ ok: false, error: "Missing tab context" });

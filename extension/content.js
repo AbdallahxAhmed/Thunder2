@@ -914,22 +914,66 @@ function handleWsEvent(payload) {
   }
 }
 
-// SPA Navigation Support for YouTube
-window.addEventListener("yt-navigate-finish", () => {
-  console.log(`${LOG} SPA navigation detected. Re-initializing...`);
+// ── SPA Navigation Support ────────────────────────────────────────────────
+// YouTube (and other SPAs) re-use the same page context across navigations.
+// We use multiple signals to detect navigation changes reliably.
+
+let _lastKnownUrl = window.location.href;
+
+function onSpaNavigation() {
+  const currentUrl = window.location.href;
+  if (currentUrl === _lastKnownUrl) return; // duplicate signal, ignore
+  _lastKnownUrl = currentUrl;
+
+  console.log(`${LOG} SPA navigation detected → ${currentUrl}`);
   preWarmSent = false;
   preWarmUrl = "";
-  
-  // Destroy and re-create all pills to ensure a clean slate for the new video
-  const currentVideos = Array.from(pillRegistry.keys());
-  for (const videoNode of currentVideos) {
+
+  // Destroy all pills for the old page
+  for (const videoNode of Array.from(pillRegistry.keys())) {
     destroyPill(videoNode);
-    setTimeout(() => {
-      if (document.body.contains(videoNode)) {
-        processVideoElement(videoNode);
-      }
-    }, 100);
+  }
+
+  // Retry video detection — the new player may not be in the DOM yet
+  let retries = 0;
+  const maxRetries = 5;
+  const retryDelay = 500; // ms
+
+  function retryDetection() {
+    const videos = document.querySelectorAll("video");
+    if (videos.length > 0) {
+      videos.forEach(processVideoElement);
+      console.log(`${LOG} Found ${videos.length} video(s) after navigation (attempt ${retries + 1})`);
+      return;
+    }
+    retries++;
+    if (retries < maxRetries) {
+      setTimeout(retryDetection, retryDelay);
+    } else {
+      console.log(`${LOG} No videos found after ${maxRetries} retries`);
+    }
+  }
+
+  // First attempt after a short delay for the DOM to settle
+  setTimeout(retryDetection, 300);
+}
+
+// Signal 1: YouTube's custom navigation event
+window.addEventListener("yt-navigate-finish", onSpaNavigation);
+
+// Signal 2: MutationObserver on <title> for generic SPA support
+const titleObserver = new MutationObserver(() => {
+  // Title change is a strong signal that navigation occurred
+  if (window.location.href !== _lastKnownUrl) {
+    onSpaNavigation();
   }
 });
+const titleEl = document.querySelector("title");
+if (titleEl) {
+  titleObserver.observe(titleEl, { childList: true });
+}
+
+// Signal 3: popstate for back/forward navigation
+window.addEventListener("popstate", onSpaNavigation);
 
 init();
