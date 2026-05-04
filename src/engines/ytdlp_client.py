@@ -55,6 +55,15 @@ class YtdlpClient:
     ) -> dict:
         """Fetch available formats without downloading."""
         opts: dict[str, Any] = {"quiet": True, "no_warnings": True}
+        
+        is_youtube = "youtube.com" in url or "youtu.be" in url
+        if not is_youtube:
+            opts["http_headers"] = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            }
+            opts.pop("extractor_args", None)
+            opts.pop("remote_components", None)
+            
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
