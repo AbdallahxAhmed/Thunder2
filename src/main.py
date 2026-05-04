@@ -14,7 +14,7 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import yt_dlp
@@ -23,6 +23,7 @@ from src.config import settings
 from src.engines import ENGINE_MAP, _register_defaults, get_engine
 from src.health import check_all_engines
 from src.queue_manager import queue_manager, ActiveJobState
+from src.event_bus import event_bus
 from src.logger import correlation_id, setup_logging
 from src.models import (
     DownloadRequest,
@@ -708,3 +709,19 @@ async def update_settings(request: SettingsUpdateRequest) -> JSONResponse:
     return JSONResponse(
         content=SettingsResponse(settings=updated).model_dump()
     )
+
+
+# ── Phase 8: WebSocket Event Bus ─────────────────────────────────────────
+
+@app.websocket("/api/ws/events")
+async def websocket_endpoint(websocket: WebSocket):
+    """Real-time event stream for GUI clients (read-only)."""
+    await websocket.accept()
+    await event_bus.connect(websocket)
+    try:
+        while True:
+            # Consume and discard client messages (read-only enforcement)
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await event_bus.disconnect(websocket)
+

@@ -11,6 +11,7 @@ from typing import Dict, Optional, List, Any
 
 from src.models import DownloadStatus
 from src.db import get_db, init_db
+from src.event_bus import event_bus
 
 
 @dataclass
@@ -340,6 +341,24 @@ class QueueManager:
             elif new_status == DownloadStatus.QUEUED.value:
                 self._queue_wakeup_event.set()
                 
+            # Emit state change event
+            payload = {
+                "status": state.status.value if isinstance(state.status, DownloadStatus) else state.status,
+                "error": state.error,
+                "output_path": state.output_path,
+                "group_id": state.group_id
+            }
+            event_bus.emit_state_changed(job_id, payload)
+        elif not db_write_required and ("progress" in kwargs or "speed" in kwargs or "eta" in kwargs):
+            # Emit progress event
+            payload = {
+                "progress": state.progress,
+                "speed": state.speed,
+                "eta": state.eta,
+                "group_id": state.group_id
+            }
+            event_bus.emit_progress(job_id, payload)
+            
         return state
 
     async def list_jobs(self, limit: int = 50, offset: int = 0, status: Optional[str] = None, engine: Optional[str] = None, group_id: Optional[str] = None) -> List[ActiveJobState]:
@@ -489,7 +508,10 @@ class QueueManager:
                 (group_id, name, source_url, now, now),
             )
             await db.commit()
-        return {"id": group_id, "name": name, "source_url": source_url, "status": "active", "created_at": now, "updated_at": now}
+        
+        group_data = {"id": group_id, "name": name, "source_url": source_url, "status": "active", "created_at": now, "updated_at": now}
+        event_bus.emit_group_event("created", group_id, {"name": name, "source_url": source_url})
+        return group_data
 
     async def list_groups(self) -> list[dict]:
         """List all groups with aggregate job counts."""
@@ -540,6 +562,7 @@ class QueueManager:
             async with get_db(self._db_path) as db:
                 await db.execute("UPDATE groups SET status = 'paused', updated_at = ? WHERE id = ?", (now, group_id))
                 await db.commit()
+            event_bus.emit_group_event("state_changed", group_id, {"status": "paused"})
         return count
 
     async def resume_group(self, group_id: str) -> int:
@@ -564,6 +587,7 @@ class QueueManager:
             async with get_db(self._db_path) as db:
                 await db.execute("UPDATE groups SET status = 'active', updated_at = ? WHERE id = ?", (now, group_id))
                 await db.commit()
+            event_bus.emit_group_event("state_changed", group_id, {"status": "active"})
         return count
 
     async def delete_group(self, group_id: str) -> bool:
@@ -576,6 +600,7 @@ class QueueManager:
             await db.execute("UPDATE jobs SET group_id = NULL, updated_at = ? WHERE group_id = ?", (now, group_id))
             await db.execute("DELETE FROM groups WHERE id = ?", (group_id,))
             await db.commit()
+        event_bus.emit_group_event("deleted", group_id, {})
         return True
 
     async def get_settings(self) -> dict[str, str]:
