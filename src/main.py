@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
     _start_time = time.time()
 
     # Initialize QueueManager (creates DB, loads cache, starts scheduler)
-    await queue_manager.init()
+    await queue_manager.start()
 
     yield
 
@@ -319,6 +319,17 @@ async def _get_media_info(
 
     max_height = max(available_heights) if available_heights else 0
 
+    if not available_heights:
+        # If no video formats were extracted, something went wrong with the engine
+        # or it's an audio-only stream that we don't currently support.
+        resp = InfoResponse(
+            url=url,
+            status="unsupported",
+            reason="No usable video formats found",
+            options=[],
+        )
+        return JSONResponse(content=resp.model_dump(mode="json"))
+
     # ── Build opinionated quality tiers ────────────────────────────────
     # Full resolution ladder — only tiers the source supports.
     # The max resolution is folded into "Best Quality (Xp)" and its
@@ -362,7 +373,7 @@ async def _get_media_info(
     for height, label, badge in TIERS:
         if height == max_height:
             continue  # folded into Best Quality above
-        if max_height >= height:
+        if height in available_heights:
             # If best codec at this height is vp9/av01 → mark as HQ
             bc = best_codec_per_height.get(height, "")
             effective_badge = badge

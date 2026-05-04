@@ -41,13 +41,13 @@ class QueueManager:
     def __init__(self, db_path: Optional[str] = None):
         self._db_path = db_path  # Will fallback to settings.db_path in db.py if None
         self._hot_cache: Dict[str, ActiveJobState] = {}
-        self._lock = asyncio.Lock()
-        self._queue_wakeup_event = asyncio.Event()
+        self._lock: Optional[asyncio.Lock] = None
+        self._queue_wakeup_event: Optional[asyncio.Event] = None
         self._scheduler_task: Optional[asyncio.Task] = None
         
         # Concurrency limits loaded from DB
         self._global_limit = 8
-        self._engine_limits = {"aria2": 4, "ytdlp": 3, "m3u8": 2}
+        self._engine_limits = {}
 
     async def _load_settings(self):
         """Read concurrency limits from settings table."""
@@ -63,8 +63,13 @@ class QueueManager:
                     engine = key.replace("engine_limit_", "")
                     self._engine_limits[engine] = int(val)
 
-    async def init(self):
-        """Initialize database and load non-terminal jobs into Hot Cache."""
+    async def start(self):
+        """Initialize database, asyncio primitives, and load non-terminal jobs into Hot Cache."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        if self._queue_wakeup_event is None:
+            self._queue_wakeup_event = asyncio.Event()
+            
         await init_db(self._db_path)
         await self._load_settings()
         
@@ -193,7 +198,7 @@ class QueueManager:
             job_id = row["id"]
             engine = row["engine"]
             
-            engine_limit = self._engine_limits.get(engine, 0)
+            engine_limit = self._engine_limits.get(engine, 3)
             if engine_active.get(engine, 0) >= engine_limit:
                 continue
                 

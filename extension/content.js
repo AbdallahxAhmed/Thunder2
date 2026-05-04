@@ -914,4 +914,22 @@ function handleWsEvent(payload) {
   }
 }
 
+// SPA Navigation Support for YouTube
+window.addEventListener("yt-navigate-finish", () => {
+  console.log(`${LOG} SPA navigation detected. Re-initializing...`);
+  preWarmSent = false;
+  preWarmUrl = "";
+  
+  // Destroy and re-create all pills to ensure a clean slate for the new video
+  const currentVideos = Array.from(pillRegistry.keys());
+  for (const videoNode of currentVideos) {
+    destroyPill(videoNode);
+    setTimeout(() => {
+      if (document.body.contains(videoNode)) {
+        processVideoElement(videoNode);
+      }
+    }, 100);
+  }
+});
+
 init();
