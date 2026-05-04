@@ -36,6 +36,8 @@ class YtdlpClient:
             "merge_output_format": "mp4",
             "quiet": True,
             "no_warnings": True,
+            "external_downloader": "aria2c",
+            "external_downloader_args": {"aria2c": ["-c", "-j", "16", "-x", "16", "-s", "16", "-k", "1M"]},
         }
         return opts
 
@@ -82,9 +84,10 @@ class YtdlpClient:
                 auth_opts: dict[str, Any] = {
                     "quiet": True,
                     "cookiesfrombrowser": (self._get_browser(user_agent),),
-                    "extractor_args": {"youtube": ["client=IOS,ANDROID_VR", "player_client=ios,android"]},
-                    "remote_components": ["ejs:github"],
                 }
+                if "youtube.com" in url or "youtu.be" in url:
+                    auth_opts["extractor_args"] = {"youtube": ["client=IOS,ANDROID_VR", "player_client=ios,android"]}
+                    auth_opts["remote_components"] = ["ejs:github"]
                 with yt_dlp.YoutubeDL(auth_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
                 all_formats = (info or {}).get("formats", [])
@@ -176,9 +179,10 @@ class YtdlpClient:
             if needs_auth:
                 logger.info("Retrying download with browser cookies for: %s", request.url)
                 opts["cookiesfrombrowser"] = (self._get_browser(request.user_agent),)
-                opts["extractor_args"] = {"youtube": ["client=IOS,ANDROID_VR", "player_client=ios,android"]}
+                if "youtube.com" in request.url or "youtu.be" in request.url:
+                    opts["extractor_args"] = {"youtube": ["client=IOS,ANDROID_VR", "player_client=ios,android"]}
+                    opts["remote_components"] = ["ejs:github"]
                 opts["format"] = "bestvideo+bestaudio/best"
-                opts["remote_components"] = ["ejs:github"]
                 opts.pop("no_warnings", None)
                 try:
                     with yt_dlp.YoutubeDL(opts) as ydl:

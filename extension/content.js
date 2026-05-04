@@ -1003,7 +1003,6 @@ function dispatchPreWarm() {
   }
 }
 
-// SPA Listeners bound globally regardless of wake state to allow instant pre-fetching
 window.addEventListener("yt-navigate-finish", onSpaNavigation);
 
 const _origPushState = history.pushState;
@@ -1018,6 +1017,26 @@ history.replaceState = function(...args) {
 };
 
 window.addEventListener("popstate", onSpaNavigation);
+
+// Polling fallback
+setInterval(() => {
+  if (window.location.href !== _lastKnownUrl) {
+    onSpaNavigation();
+  }
+}, 500);
+
+// Pill persistence
+setInterval(() => {
+  const videos = document.querySelectorAll("video");
+  for (const v of videos) {
+    if (!pillRegistry.has(v)) {
+      const rect = v.getBoundingClientRect();
+      if (rect.width >= 150 && rect.height >= 150) {
+        processVideoElement(v);
+      }
+    }
+  }
+}, 2000);
 
 // Stay dormant until a video is explicitly detected
 if (document.querySelector("video")) {
