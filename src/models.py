@@ -246,3 +246,102 @@ class InfoResponse(BaseModel):
     duration: Optional[float] = None
     max_height: Optional[int] = None
     options: list[QualityOption] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Phase 7: Queue Management API models
+# ---------------------------------------------------------------------------
+
+
+class JobActionResponse(BaseModel):
+    """Response for job action endpoints (pause, resume, cancel, retry, delete)."""
+
+    id: str
+    action: str
+    status: str
+    message: str = ""
+
+
+class JobListItem(BaseModel):
+    """Single item in the paginated job list."""
+
+    id: str
+    url: str
+    engine: str
+    status: str
+    progress: Optional[float] = None
+    speed: Optional[str] = None
+    eta: Optional[int] = None
+    output_path: Optional[str] = None
+    file_size: Optional[int] = None
+    error: Optional[str] = None
+    group_id: Optional[str] = None
+    title: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class JobListResponse(BaseModel):
+    """Paginated response for GET /api/jobs."""
+
+    jobs: list[JobListItem]
+    total: int
+    limit: int
+    offset: int
+
+
+class GroupCreateRequest(BaseModel):
+    """Request body for POST /api/groups."""
+
+    name: str = Field(..., min_length=1)
+    source_url: Optional[str] = None
+    urls: list[str] = Field(default_factory=list, description="URLs to add as jobs")
+    engine: Optional[str] = Field(default=None, description="Engine override for all jobs")
+
+
+class GroupListItem(BaseModel):
+    """Summary of a group for listing."""
+
+    id: str
+    name: str
+    source_url: Optional[str] = None
+    status: str
+    total_jobs: int = 0
+    completed_jobs: int = 0
+    failed_jobs: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class GroupListResponse(BaseModel):
+    """Paginated response for GET /api/groups."""
+
+    groups: list[GroupListItem]
+    total: int
+
+
+class GroupDetailResponse(BaseModel):
+    """Detailed group response with job list."""
+
+    id: str
+    name: str
+    source_url: Optional[str] = None
+    status: str
+    jobs: list[JobListItem] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class SettingsResponse(BaseModel):
+    """Response for GET /api/settings."""
+
+    settings: dict[str, str]
+
+
+class SettingsUpdateRequest(BaseModel):
+    """Request body for PUT /api/settings."""
+
+    settings: dict[str, str] = Field(
+        ..., description="Key-value pairs to update"
+    )
+

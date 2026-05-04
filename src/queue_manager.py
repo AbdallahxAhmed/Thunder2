@@ -460,6 +460,144 @@ class QueueManager:
                 
         await self.update_job(job_id, status=DownloadStatus.QUEUED)
 
+    async def count_jobs(self, status: str | None = None, engine: str | None = None, group_id: str | None = None) -> int:
+        """Count total jobs matching filters."""
+        query = "SELECT COUNT(*) as cnt FROM jobs WHERE 1=1"
+        params: list = []
+
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if engine:
+            query += " AND engine = ?"
+            params.append(engine)
+        if group_id:
+            query += " AND group_id = ?"
+            params.append(group_id)
+
+        async with get_db(self._db_path) as db:
+            cursor = await db.execute(query, tuple(params))
+            row = await cursor.fetchone()
+            return row["cnt"] if row else 0
+
+    async def create_group(self, group_id: str, name: str, source_url: str | None = None) -> dict:
+        """Create a group in SQLite."""
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        async with get_db(self._db_path) as db:
+            await db.execute(
+                "INSERT INTO groups (id, name, source_url, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)",
+                (group_id, name, source_url, now, now),
+            )
+            await db.commit()
+        return {"id": group_id, "name": name, "source_url": source_url, "status": "active", "created_at": now, "updated_at": now}
+
+    async def list_groups(self) -> list[dict]:
+        """List all groups with aggregate job counts."""
+        async with get_db(self._db_path) as db:
+            cursor = await db.execute(
+                """SELECT g.*,
+                    (SELECT COUNT(*) FROM jobs WHERE group_id = g.id) as total_jobs,
+                    (SELECT COUNT(*) FROM jobs WHERE group_id = g.id AND status = 'completed') as completed_jobs,
+                    (SELECT COUNT(*) FROM jobs WHERE group_id = g.id AND status = 'failed') as failed_jobs
+                   FROM groups g ORDER BY g.created_at DESC"""
+            )
+            return await cursor.fetchall()
+
+    async def get_group(self, group_id: str) -> dict | None:
+        """Get a single group with its jobs."""
+        async with get_db(self._db_path) as db:
+            cursor = await db.execute("SELECT * FROM groups WHERE id = ?", (group_id,))
+            group = await cursor.fetchone()
+            if not group:
+                return None
+
+            jobs_cursor = await db.execute(
+                "SELECT * FROM jobs WHERE group_id = ? ORDER BY created_at ASC", (group_id,)
+            )
+            jobs = await jobs_cursor.fetchall()
+            group["jobs"] = jobs
+            return group
+
+    async def pause_group(self, group_id: str) -> int:
+        """Pause all downloading jobs in a group. Returns count of paused jobs."""
+        count = 0
+        async with get_db(self._db_path) as db:
+            cursor = await db.execute(
+                "SELECT id FROM jobs WHERE group_id = ? AND status = ?",
+                (group_id, DownloadStatus.DOWNLOADING.value),
+            )
+            rows = await cursor.fetchall()
+
+        for row in rows:
+            try:
+                await self.pause_job(row["id"])
+                count += 1
+            except ValueError:
+                pass
+
+        if count > 0:
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            async with get_db(self._db_path) as db:
+                await db.execute("UPDATE groups SET status = 'paused', updated_at = ? WHERE id = ?", (now, group_id))
+                await db.commit()
+        return count
+
+    async def resume_group(self, group_id: str) -> int:
+        """Resume all paused jobs in a group. Returns count of resumed jobs."""
+        count = 0
+        async with get_db(self._db_path) as db:
+            cursor = await db.execute(
+                "SELECT id FROM jobs WHERE group_id = ? AND status = ?",
+                (group_id, DownloadStatus.PAUSED.value),
+            )
+            rows = await cursor.fetchall()
+
+        for row in rows:
+            try:
+                await self.resume_job(row["id"])
+                count += 1
+            except ValueError:
+                pass
+
+        if count > 0:
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            async with get_db(self._db_path) as db:
+                await db.execute("UPDATE groups SET status = 'active', updated_at = ? WHERE id = ?", (now, group_id))
+                await db.commit()
+        return count
+
+    async def delete_group(self, group_id: str) -> bool:
+        """Delete a group and dissociate its jobs (set group_id = NULL)."""
+        async with get_db(self._db_path) as db:
+            cursor = await db.execute("SELECT id FROM groups WHERE id = ?", (group_id,))
+            if not await cursor.fetchone():
+                return False
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            await db.execute("UPDATE jobs SET group_id = NULL, updated_at = ? WHERE group_id = ?", (now, group_id))
+            await db.execute("DELETE FROM groups WHERE id = ?", (group_id,))
+            await db.commit()
+        return True
+
+    async def get_settings(self) -> dict[str, str]:
+        """Read all settings from the settings table."""
+        async with get_db(self._db_path) as db:
+            cursor = await db.execute("SELECT key, value FROM settings")
+            rows = await cursor.fetchall()
+        return {row["key"]: row["value"] for row in rows}
+
+    async def update_settings(self, updates: dict[str, str]) -> dict[str, str]:
+        """Update settings and reload in-memory limits."""
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        async with get_db(self._db_path) as db:
+            for key, value in updates.items():
+                await db.execute(
+                    "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    (key, value, now),
+                )
+            await db.commit()
+        await self._load_settings()
+        return await self.get_settings()
+
     async def shutdown(self):
         """Shutdown the background scheduler task."""
         if self._scheduler_task:
@@ -472,3 +610,4 @@ class QueueManager:
 
 # Global singleton instance
 queue_manager = QueueManager()
+

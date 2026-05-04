@@ -33,6 +33,15 @@ from src.models import (
     StatusResponse,
     InfoResponse,
     QualityOption,
+    JobActionResponse,
+    JobListItem,
+    JobListResponse,
+    GroupCreateRequest,
+    GroupListItem,
+    GroupListResponse,
+    GroupDetailResponse,
+    SettingsResponse,
+    SettingsUpdateRequest,
 )
 from src.router import classify
 
@@ -378,4 +387,324 @@ async def health_check() -> JSONResponse:
             uptime_seconds=round(uptime, 1),
             engines=[e.model_dump() for e in _engine_health],
         ).model_dump(),
+    )
+
+
+# ── Phase 7: Queue Management REST API ────────────────────────────────────
+
+
+@app.get("/api/jobs", response_model=JobListResponse)
+async def list_jobs(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    status: str | None = Query(default=None),
+    engine: str | None = Query(default=None),
+    group_id: str | None = Query(default=None),
+) -> JSONResponse:
+    """Paginated, filterable list of all jobs."""
+    jobs = await queue_manager.list_jobs(
+        limit=limit, offset=offset, status=status, engine=engine, group_id=group_id
+    )
+    total = await queue_manager.count_jobs(status=status, engine=engine, group_id=group_id)
+
+    items = [
+        JobListItem(
+            id=j.job_id,
+            url=j.url,
+            engine=j.engine,
+            status=j.status.value if isinstance(j.status, DownloadStatus) else j.status,
+            progress=j.progress,
+            speed=j.speed,
+            eta=j.eta,
+            output_path=j.output_path,
+            file_size=j.file_size,
+            error=j.error,
+            group_id=j.group_id,
+            title=j.title,
+            created_at=j.created_at,
+            updated_at=j.updated_at,
+        )
+        for j in jobs
+    ]
+
+    return JSONResponse(
+        content=JobListResponse(
+            jobs=items, total=total, limit=limit, offset=offset
+        ).model_dump(mode="json")
+    )
+
+
+@app.post("/api/jobs/{job_id}/pause", response_model=JobActionResponse)
+async def pause_job(job_id: str) -> JSONResponse:
+    """Pause a downloading job."""
+    try:
+        await queue_manager.pause_job(job_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="INVALID_STATE_TRANSITION", message=str(e)
+            ).model_dump(),
+        )
+    return JSONResponse(
+        content=JobActionResponse(
+            id=job_id, action="pause", status="paused", message="Job paused"
+        ).model_dump()
+    )
+
+
+@app.post("/api/jobs/{job_id}/resume", response_model=JobActionResponse)
+async def resume_job(job_id: str) -> JSONResponse:
+    """Resume a paused job."""
+    try:
+        await queue_manager.resume_job(job_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="INVALID_STATE_TRANSITION", message=str(e)
+            ).model_dump(),
+        )
+    return JSONResponse(
+        content=JobActionResponse(
+            id=job_id, action="resume", status="queued", message="Job resumed"
+        ).model_dump()
+    )
+
+
+@app.post("/api/jobs/{job_id}/cancel", response_model=JobActionResponse)
+async def cancel_job(job_id: str) -> JSONResponse:
+    """Cancel a job."""
+    try:
+        await queue_manager.cancel_job(job_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="INVALID_STATE_TRANSITION", message=str(e)
+            ).model_dump(),
+        )
+    return JSONResponse(
+        content=JobActionResponse(
+            id=job_id, action="cancel", status="cancelled", message="Job cancelled"
+        ).model_dump()
+    )
+
+
+@app.post("/api/jobs/{job_id}/retry", response_model=JobActionResponse)
+async def retry_job(job_id: str) -> JSONResponse:
+    """Retry a failed job."""
+    try:
+        await queue_manager.retry_job(job_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="INVALID_STATE_TRANSITION", message=str(e)
+            ).model_dump(),
+        )
+    return JSONResponse(
+        content=JobActionResponse(
+            id=job_id, action="retry", status="queued", message="Job retried"
+        ).model_dump()
+    )
+
+
+@app.delete("/api/jobs/{job_id}", response_model=JobActionResponse)
+async def delete_job(job_id: str) -> JSONResponse:
+    """Delete a job."""
+    job = await queue_manager.get_job(job_id)
+    if job is None:
+        return JSONResponse(
+            status_code=404,
+            content=ErrorResponse(
+                error_code="JOB_NOT_FOUND",
+                message=f"No download job found with ID: {job_id}",
+            ).model_dump(),
+        )
+    await queue_manager.delete_job(job_id)
+    return JSONResponse(
+        content=JobActionResponse(
+            id=job_id, action="delete", status="deleted", message="Job deleted"
+        ).model_dump()
+    )
+
+
+# ── Groups ────────────────────────────────────────────────────────────────
+
+
+@app.post("/api/groups", status_code=201, response_model=GroupDetailResponse)
+async def create_group(request: GroupCreateRequest) -> JSONResponse:
+    """Create a download group, optionally with initial jobs."""
+    group_id = str(uuid.uuid4())
+    group = await queue_manager.create_group(
+        group_id=group_id, name=request.name, source_url=request.source_url
+    )
+
+    # Create child jobs if URLs provided
+    engine_override = request.engine
+    for url in request.urls:
+        job_engine = engine_override or classify(url)
+        job_id = str(uuid.uuid4())
+        await queue_manager.create_job(
+            job_id=job_id, url=url, engine=job_engine, group_id=group_id
+        )
+
+    # Fetch full group with jobs
+    detail = await queue_manager.get_group(group_id)
+    jobs = [
+        JobListItem(
+            id=j["id"], url=j["url"], engine=j["engine"], status=j["status"],
+            progress=j.get("progress"), speed=j.get("speed"), eta=j.get("eta"),
+            output_path=j.get("output_path"), file_size=j.get("file_size"),
+            error=j.get("error"), group_id=j.get("group_id"), title=j.get("title"),
+            created_at=j["created_at"], updated_at=j["updated_at"],
+        )
+        for j in (detail.get("jobs", []) if detail else [])
+    ]
+
+    return JSONResponse(
+        status_code=201,
+        content=GroupDetailResponse(
+            id=group_id, name=request.name, source_url=request.source_url,
+            status="active", jobs=jobs,
+            created_at=group["created_at"], updated_at=group["updated_at"],
+        ).model_dump(mode="json"),
+    )
+
+
+@app.get("/api/groups", response_model=GroupListResponse)
+async def list_groups() -> JSONResponse:
+    """List all groups with aggregate counts."""
+    rows = await queue_manager.list_groups()
+    items = [
+        GroupListItem(
+            id=r["id"], name=r["name"], source_url=r.get("source_url"),
+            status=r["status"], total_jobs=r.get("total_jobs", 0),
+            completed_jobs=r.get("completed_jobs", 0),
+            failed_jobs=r.get("failed_jobs", 0),
+            created_at=r["created_at"], updated_at=r["updated_at"],
+        )
+        for r in rows
+    ]
+    return JSONResponse(
+        content=GroupListResponse(groups=items, total=len(items)).model_dump(mode="json")
+    )
+
+
+@app.get("/api/groups/{group_id}", response_model=GroupDetailResponse)
+async def get_group(group_id: str) -> JSONResponse:
+    """Get a group with its jobs."""
+    detail = await queue_manager.get_group(group_id)
+    if detail is None:
+        return JSONResponse(
+            status_code=404,
+            content=ErrorResponse(
+                error_code="GROUP_NOT_FOUND",
+                message=f"No group found with ID: {group_id}",
+            ).model_dump(),
+        )
+    jobs = [
+        JobListItem(
+            id=j["id"], url=j["url"], engine=j["engine"], status=j["status"],
+            progress=j.get("progress"), speed=j.get("speed"), eta=j.get("eta"),
+            output_path=j.get("output_path"), file_size=j.get("file_size"),
+            error=j.get("error"), group_id=j.get("group_id"), title=j.get("title"),
+            created_at=j["created_at"], updated_at=j["updated_at"],
+        )
+        for j in detail.get("jobs", [])
+    ]
+    return JSONResponse(
+        content=GroupDetailResponse(
+            id=detail["id"], name=detail["name"],
+            source_url=detail.get("source_url"), status=detail["status"],
+            jobs=jobs, created_at=detail["created_at"],
+            updated_at=detail["updated_at"],
+        ).model_dump(mode="json")
+    )
+
+
+@app.post("/api/groups/{group_id}/pause", response_model=JobActionResponse)
+async def pause_group(group_id: str) -> JSONResponse:
+    """Pause all downloading jobs in a group."""
+    count = await queue_manager.pause_group(group_id)
+    return JSONResponse(
+        content=JobActionResponse(
+            id=group_id, action="pause_group", status="paused",
+            message=f"Paused {count} job(s)",
+        ).model_dump()
+    )
+
+
+@app.post("/api/groups/{group_id}/resume", response_model=JobActionResponse)
+async def resume_group(group_id: str) -> JSONResponse:
+    """Resume all paused jobs in a group."""
+    count = await queue_manager.resume_group(group_id)
+    return JSONResponse(
+        content=JobActionResponse(
+            id=group_id, action="resume_group", status="active",
+            message=f"Resumed {count} job(s)",
+        ).model_dump()
+    )
+
+
+@app.delete("/api/groups/{group_id}", response_model=JobActionResponse)
+async def delete_group(group_id: str) -> JSONResponse:
+    """Delete a group and dissociate its jobs."""
+    deleted = await queue_manager.delete_group(group_id)
+    if not deleted:
+        return JSONResponse(
+            status_code=404,
+            content=ErrorResponse(
+                error_code="GROUP_NOT_FOUND",
+                message=f"No group found with ID: {group_id}",
+            ).model_dump(),
+        )
+    return JSONResponse(
+        content=JobActionResponse(
+            id=group_id, action="delete_group", status="deleted",
+            message="Group deleted",
+        ).model_dump()
+    )
+
+
+# ── Settings ──────────────────────────────────────────────────────────────
+
+
+@app.get("/api/settings", response_model=SettingsResponse)
+async def get_settings() -> JSONResponse:
+    """Get all runtime settings."""
+    settings_data = await queue_manager.get_settings()
+    return JSONResponse(
+        content=SettingsResponse(settings=settings_data).model_dump()
+    )
+
+
+@app.put("/api/settings", response_model=SettingsResponse)
+async def update_settings(request: SettingsUpdateRequest) -> JSONResponse:
+    """Update runtime settings (concurrency limits, etc.)."""
+    # Validate concurrency limits
+    for key, value in request.settings.items():
+        if "limit" in key or "concurrent" in key:
+            try:
+                int_val = int(value)
+                if int_val < 1:
+                    return JSONResponse(
+                        status_code=422,
+                        content=ErrorResponse(
+                            error_code="VALIDATION_ERROR",
+                            message=f"Setting '{key}' must be >= 1, got {value}",
+                        ).model_dump(),
+                    )
+            except ValueError:
+                return JSONResponse(
+                    status_code=422,
+                    content=ErrorResponse(
+                        error_code="VALIDATION_ERROR",
+                        message=f"Setting '{key}' must be an integer, got '{value}'",
+                    ).model_dump(),
+                )
+    updated = await queue_manager.update_settings(request.settings)
+    return JSONResponse(
+        content=SettingsResponse(settings=updated).model_dump()
     )
