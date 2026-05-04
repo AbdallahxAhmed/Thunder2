@@ -13,7 +13,6 @@ from typing import Any
 import yt_dlp
 
 from src.config import settings
-from src.cookies import write_cookie_file, cleanup_cookie_file
 from src.models import DownloadJob, DownloadRequest
 
 logger = logging.getLogger(__name__)
@@ -38,23 +37,16 @@ class YtdlpClient:
             "quiet": True,
             "no_warnings": True,
         }
-
-        # Forward custom headers
-        headers: dict[str, str] = {}
-        if request.user_agent:
-            headers["User-Agent"] = request.user_agent
-        if headers:
-            opts["http_headers"] = headers
-
-        # Write browser cookies to a Netscape cookie file
-        if request.cookies:
-            if isinstance(request.cookies, list):
-                cookie_path = write_cookie_file(request.cookies)
-                if cookie_path:
-                    opts["cookiefile"] = cookie_path
-            elif isinstance(request.cookies, str):
-                # Legacy fallback: raw cookie header string
-                opts.setdefault("http_headers", {})["Cookie"] = request.cookies
+        # Map the User-Agent to a known browser for yt-dlp cookie extraction
+        ua = (request.user_agent or "").lower()
+        if "firefox" in ua:
+            browser = "firefox"
+        elif "edg" in ua:
+            browser = "edge"
+        else:
+            browser = "chromium"
+            
+        opts["cookiesfrombrowser"] = (browser,)
 
         return opts
 
@@ -63,18 +55,19 @@ class YtdlpClient:
     ) -> dict:
         """Fetch available formats without downloading."""
         opts: dict[str, Any] = {"quiet": True, "no_warnings": True}
-        if user_agent:
-            opts.setdefault("http_headers", {})["User-Agent"] = user_agent
-        cookie_path = None
-        if cookies:
-            cookie_path = write_cookie_file(cookies)
-            if cookie_path:
-                opts["cookiefile"] = cookie_path
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(url, download=False)
-        finally:
-            cleanup_cookie_file(cookie_path)
+        
+        ua = (user_agent or "").lower()
+        if "firefox" in ua:
+            browser = "firefox"
+        elif "edg" in ua:
+            browser = "edge"
+        else:
+            browser = "chromium"
+            
+        opts["cookiesfrombrowser"] = (browser,)
+
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            return ydl.extract_info(url, download=False)
 
     def execute(self, job: DownloadJob, request: DownloadRequest) -> dict:
         """Run a media download end-to-end (blocking).
@@ -120,7 +113,6 @@ class YtdlpClient:
 
         opts["progress_hooks"] = [_progress_hook]
 
-        cookie_path = opts.get("cookiefile")
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([request.url])
@@ -143,5 +135,3 @@ class YtdlpClient:
                 },
             )
             return {"status": "failed", "error": str(exc)}
-        finally:
-            cleanup_cookie_file(cookie_path)
