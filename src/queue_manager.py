@@ -209,16 +209,22 @@ class QueueManager:
 
     async def _scheduler_loop(self):
         """Background task evaluating the queue."""
+        import logging
+        _log = logging.getLogger(__name__)
         while True:
-            await self._queue_wakeup_event.wait()
-            self._queue_wakeup_event.clear()
             try:
+                await self._queue_wakeup_event.wait()
+                self._queue_wakeup_event.clear()
+                # Small debounce so rapid-fire creates are batched
+                await asyncio.sleep(0.05)
                 await self._promote_next()
+                # Re-check: if new jobs arrived during promote, loop again
+                if self._queue_wakeup_event.is_set():
+                    continue
             except asyncio.CancelledError:
                 break
-            except Exception:
-                # In production, we'd log this.
-                pass
+            except Exception as e:
+                _log.error("Scheduler loop error: %s", e, exc_info=True)
 
     async def _on_job_finished(self):
         """Called when a job reaches a terminal/paused state."""

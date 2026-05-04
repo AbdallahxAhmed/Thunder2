@@ -55,10 +55,29 @@ class YtdlpClient:
         opts: dict[str, Any] = {"quiet": True, "no_warnings": True}
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
-                return ydl.extract_info(url, download=False)
+                info = ydl.extract_info(url, download=False)
+
+            # Detect anti-bot: extraction succeeds but formats are stripped
+            video_formats = [
+                f for f in (info or {}).get("formats", [])
+                if f.get("height") and (f.get("vcodec") or "") != "none"
+            ]
+            if not video_formats:
+                raise yt_dlp.utils.DownloadError(
+                    "No video formats returned — likely auth-gated"
+                )
+
+            return info
         except Exception as exc:
             exc_str = str(exc).lower()
-            if "age" in exc_str or "sign in" in exc_str:
+            needs_auth = (
+                "age" in exc_str
+                or "sign in" in exc_str
+                or "no video formats" in exc_str
+                or "requested format" in exc_str
+            )
+            if needs_auth:
+                logger.info("Retrying extraction with browser cookies for: %s", url)
                 opts["cookiesfrombrowser"] = (self._get_browser(user_agent),)
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     return ydl.extract_info(url, download=False)
@@ -119,7 +138,14 @@ class YtdlpClient:
             }
         except Exception as exc:
             exc_str = str(exc).lower()
-            if "age" in exc_str or "sign in" in exc_str:
+            needs_auth = (
+                "age" in exc_str
+                or "sign in" in exc_str
+                or "no video formats" in exc_str
+                or "requested format" in exc_str
+            )
+            if needs_auth:
+                logger.info("Retrying download with browser cookies for: %s", request.url)
                 opts["cookiesfrombrowser"] = (self._get_browser(request.user_agent),)
                 try:
                     with yt_dlp.YoutubeDL(opts) as ydl:
