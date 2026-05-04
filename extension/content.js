@@ -117,6 +117,7 @@ function setupGlobalTracking() {
       if (!preWarmSent || preWarmUrl !== window.location.href) {
         preWarmUrl = window.location.href;
         preWarmSent = true;
+        console.log(`[THUNDER] Sending PRE_WARM_URL for: ${preWarmUrl}`);
         chrome.runtime.sendMessage({ action: "PRE_WARM_URL", url: preWarmUrl });
       }
     }
@@ -965,10 +966,12 @@ window.addEventListener("yt-navigate-finish", onSpaNavigation);
 const _origPushState = history.pushState;
 const _origReplaceState = history.replaceState;
 history.pushState = function(...args) {
+  console.log("[THUNDER] pushState intercepted:", args);
   _origPushState.apply(this, args);
   onSpaNavigation();
 };
 history.replaceState = function(...args) {
+  console.log("[THUNDER] replaceState intercepted:", args);
   _origReplaceState.apply(this, args);
   onSpaNavigation();
 };
@@ -978,6 +981,7 @@ window.addEventListener("popstate", onSpaNavigation);
 
 // Signal 4: Polling fallback — catches edge cases missed by all above
 setInterval(() => {
+  console.log("[THUNDER] SPA fallback polling tick, current URL:", window.location.href);
   if (window.location.href !== _lastKnownUrl) {
     onSpaNavigation();
   }

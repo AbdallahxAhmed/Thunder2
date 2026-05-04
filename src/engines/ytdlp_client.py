@@ -94,6 +94,10 @@ class YtdlpClient:
                     "Authenticated extraction: %d video formats for %s",
                     len(auth_formats), url,
                 )
+                logger.error(f"[THUNDER] Fallback extraction result keys: {info.keys() if info else 'None'}")
+                if not auth_formats:
+                    logger.error("[THUNDER] Authenticated extraction STILL returned 0 video formats. Aborting.")
+                    raise yt_dlp.utils.DownloadError("Authenticated extraction returned no video formats")
                 return info
             raise
 

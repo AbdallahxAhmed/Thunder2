@@ -287,7 +287,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return false;
       }
 
-      console.log(`${LOG} PRE_WARM: fetching formats for ${url}`);
+      console.log(`[THUNDER] Received PRE_WARM_URL, starting fetch for: ${url}`);
       formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
 
       getCookiesForUrl(url).then(cookieObjects => {
@@ -310,10 +310,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           })
           .then(data => {
             formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready", drmHint });
-            console.log(`${LOG} PRE_WARM: cached formats for ${url}`);
+            console.log(`[THUNDER] PRE_WARM: cached formats successfully for ${url}`);
           })
           .catch(err => {
-            console.error(`${LOG} PRE_WARM failed:`, err);
+            console.error(`[THUNDER] PRE_WARM failed completely for ${url}:`, err);
             formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error", drmHint });
           });
       });
