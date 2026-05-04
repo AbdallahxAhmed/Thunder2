@@ -270,6 +270,59 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const hasRawStream = buffer && !!buffer.manifestUrl;
     const drmHint = buffer ? buffer.drmHint : false;
 
+    // ── PRE_WARM_URL: fire-and-forget cache population ────────────
+    // No sendResponse — the content script doesn't listen for a reply.
+    if (message.action === "PRE_WARM_URL") {
+      // Already cached or currently fetching? Skip.
+      if (cached && (cached.status === "fetching" || (isCacheMatch(cached, url, drmHint) && isCacheFresh(cached)))) {
+        return false; // no async response needed
+      }
+
+      // Pre-filter
+      const urlLower = url.toLowerCase();
+      const SKIP_PREFIXES = ["chrome://", "chrome-extension://"];
+      const SKIP_SUFFIXES = [".jpg", ".png", ".css"];
+      if (SKIP_PREFIXES.some(p => urlLower.startsWith(p)) ||
+          SKIP_SUFFIXES.some(s => urlLower.endsWith(s))) {
+        return false;
+      }
+
+      console.log(`${LOG} PRE_WARM: fetching formats for ${url}`);
+      formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
+
+      getCookiesForUrl(url).then(cookieObjects => {
+        const infoPayload = {
+          url: url,
+          drm_hint: drmHint,
+          user_agent: navigator.userAgent,
+          cookies: cookieObjects.length > 0 ? cookieObjects : undefined
+        };
+
+        fetch(DAEMON_INFO_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(30_000),
+          body: JSON.stringify(infoPayload)
+        })
+          .then(resp => {
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return resp.json();
+          })
+          .then(data => {
+            formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready", drmHint });
+            console.log(`${LOG} PRE_WARM: cached formats for ${url}`);
+          })
+          .catch(err => {
+            console.error(`${LOG} PRE_WARM failed:`, err);
+            formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error", drmHint });
+          });
+      });
+
+      return false; // no async response needed
+    }
+
+    // ── GET_HYBRID_STREAMS / getFormats ────────────────────────────
+
     function sendHybridResponse(data, fromCache) {
       const payload = {
         title: data?.title || buffer?.title || "Unknown Title",

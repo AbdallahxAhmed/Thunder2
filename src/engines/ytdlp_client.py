@@ -67,6 +67,7 @@ class YtdlpClient:
                     "No video formats returned — likely auth-gated"
                 )
 
+            logger.debug("extract_info OK: %d video formats for %s", len(video_formats), url)
             return info
         except Exception as exc:
             exc_str = str(exc).lower()
@@ -78,9 +79,22 @@ class YtdlpClient:
             )
             if needs_auth:
                 logger.info("Retrying extraction with browser cookies for: %s", url)
-                opts["cookiesfrombrowser"] = (self._get_browser(user_agent),)
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    return ydl.extract_info(url, download=False)
+                auth_opts: dict[str, Any] = {
+                    "quiet": True,
+                    "no_warnings": True,
+                    "cookiesfrombrowser": (self._get_browser(user_agent),),
+                }
+                with yt_dlp.YoutubeDL(auth_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                auth_formats = [
+                    f for f in (info or {}).get("formats", [])
+                    if f.get("height") and (f.get("vcodec") or "") != "none"
+                ]
+                logger.info(
+                    "Authenticated extraction: %d video formats for %s",
+                    len(auth_formats), url,
+                )
+                return info
             raise
 
     def execute(self, job: DownloadJob, request: DownloadRequest) -> dict:
