@@ -120,6 +120,18 @@ function getBuffer(tabId) {
 const formatCache = new Map();
 const CACHE_TTL_MS = 300_000;
 
+function normalizeUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    const v = url.searchParams.get("v");
+    url.search = v ? `?v=${v}` : "";
+    url.hash = "";
+    return url.toString();
+  } catch (e) {
+    return rawUrl;
+  }
+}
+
 function isCacheMatch(entry, url, drmHint) {
   return entry && entry.url === url && entry.drmHint === drmHint;
 }
@@ -246,12 +258,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // For SPA sites like YouTube, sender.tab.url may lag behind during
     // navigation.  message.url comes from window.location.href in the
     // content script and is always up-to-date.  Prefer it when available.
-    const url = message.url || sender.tab?.url;
+    const urlRaw = message.url || sender.tab?.url;
 
-    if (!tabId || !url) {
+    if (!tabId || !urlRaw) {
       sendResponse({ ok: false, error: "Missing tab context" });
       return true;
     }
+
+    const url = normalizeUrl(urlRaw);
 
     const cached = formatCache.get(url);
     const buffer = tabBuffers.get(tabId);

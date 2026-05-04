@@ -23,6 +23,18 @@ let isUIActive = false;
 let preWarmSent = false;
 let preWarmUrl = "";
 
+function normalizeUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    const v = url.searchParams.get("v");
+    url.search = v ? `?v=${v}` : "";
+    url.hash = "";
+    return url.toString();
+  } catch (e) {
+    return rawUrl;
+  }
+}
+
 const HOST_STYLE = `
   position: fixed !important;
   top: 0 !important;
@@ -114,8 +126,9 @@ function setupGlobalTracking() {
       updateAllPillsVisibility();
 
       // Predictive Pre-warming
-      if (!preWarmSent || preWarmUrl !== window.location.href) {
-        preWarmUrl = window.location.href;
+      const normUrl = normalizeUrl(window.location.href);
+      if (!preWarmSent || preWarmUrl !== normUrl) {
+        preWarmUrl = normUrl;
         preWarmSent = true;
         console.log(`[THUNDER] Sending PRE_WARM_URL for: ${preWarmUrl}`);
         chrome.runtime.sendMessage({ action: "PRE_WARM_URL", url: preWarmUrl });
@@ -424,7 +437,7 @@ function openMenu(instance) {
   instance.element.classList.add("state-menu");
 
   const menu = instance.element.querySelector(".menu-content");
-  const videoUrl = window.location.href;
+  const videoUrl = normalizeUrl(window.location.href);
 
   if (instance.jobId) {
     renderActiveDownload(instance);
@@ -689,7 +702,7 @@ function setupGlobalInteractions() {
     }
     if (!targetInstance) return;
 
-    const url = window.location.href;
+    const url = normalizeUrl(window.location.href);
     const formatId = btn.getAttribute("data-format-id");
     if (!formatId) return;
 
