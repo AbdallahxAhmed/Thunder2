@@ -317,7 +317,15 @@ async def get_media_info(
 
     # Map height → human label for the "Best Quality" heading
     height_labels = {h: lbl for h, lbl, _ in TIERS}
-    best_label_suffix = height_labels.get(max_height, f"{max_height}p") if max_height > 0 else ""
+    # Snap non-standard heights (e.g. 1920 from portrait/rotated videos)
+    # to the nearest standard tier to avoid labels like "1920p".
+    display_height = max_height
+    if max_height > 0 and max_height not in height_labels:
+        tier_heights = sorted(height_labels.keys())
+        # Find the largest standard tier ≤ max_height
+        candidates = [t for t in tier_heights if t <= max_height]
+        display_height = candidates[-1] if candidates else max_height
+    best_label_suffix = height_labels.get(display_height, f"{display_height}p") if max_height > 0 else ""
 
     options: list[QualityOption] = []
 

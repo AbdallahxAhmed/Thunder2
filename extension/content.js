@@ -457,9 +457,25 @@ function openMenu(instance) {
       }
     });
 
+    // Safety timeout — prevent infinite "Fetching formats..." hang
+    let formatResponseReceived = false;
+    const formatTimeout = setTimeout(() => {
+      if (!formatResponseReceived && instance.state === STATE_MENU) {
+        const loadNode = menu.querySelector(".loading-text");
+        if (loadNode && !menu.querySelector(".format-btn")) {
+          menu.innerHTML = `<div class="loading-text" style="color: var(--accent-red)">Timed out fetching formats</div>`;
+        } else if (loadNode) {
+          loadNode.style.display = "none";
+        }
+      }
+    }, 35000);
+
     chrome.runtime.sendMessage(
       { action: "GET_HYBRID_STREAMS", url: videoUrl },
       (response) => {
+        formatResponseReceived = true;
+        clearTimeout(formatTimeout);
+
         if (response && response.ok) {
           instance.cachedUrl = videoUrl;
           instance.cachedData = response.data;
@@ -475,6 +491,19 @@ function openMenu(instance) {
           }
           return;
         }
+
+        // Handle "unsupported" status from backend (e.g. age-restricted content)
+        if (response.data && response.data.status === "unsupported") {
+          const reason = response.data.reason || "Unsupported URL";
+          if (!menu.querySelector(".format-btn")) {
+            menu.innerHTML = `<div class="loading-text" style="color: var(--accent-yellow)">${reason}</div>`;
+          } else {
+            const loadNode = menu.querySelector(".loading-text");
+            if (loadNode) loadNode.style.display = "none";
+          }
+          return;
+        }
+
         renderFormats(instance, response.data);
       },
     );
