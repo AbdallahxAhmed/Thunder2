@@ -65,6 +65,9 @@ class QueueManager:
 
     async def start(self):
         """Initialize database, asyncio primitives, and load non-terminal jobs into Hot Cache."""
+        import logging
+        _log = logging.getLogger(__name__)
+
         if self._lock is None:
             self._lock = asyncio.Lock()
         if self._queue_wakeup_event is None:
@@ -73,6 +76,20 @@ class QueueManager:
         await init_db(self._db_path)
         await self._load_settings()
         
+        # ── Startup Recovery: reset stale DOWNLOADING jobs to QUEUED ──────
+        # Jobs stuck in DOWNLOADING from a previous crash will never complete
+        # because their engine threads died.  Re-queue them so they get retried.
+        async with get_db(self._db_path) as db:
+            cursor = await db.execute(
+                "UPDATE jobs SET status = ? WHERE status IN (?, ?)",
+                (DownloadStatus.QUEUED.value, DownloadStatus.DOWNLOADING.value, DownloadStatus.PAUSED.value),
+            )
+            recovered = cursor.rowcount
+            if recovered:
+                await db.commit()
+                _log.info("Startup recovery: reset %d stale jobs to QUEUED", recovered)
+
+        # Load non-terminal jobs into Hot Cache
         async with get_db(self._db_path) as db:
             cursor = await db.execute(
                 "SELECT * FROM jobs WHERE status NOT IN (?, ?)",
@@ -97,6 +114,8 @@ class QueueManager:
                     title=row["title"]
                 )
                 self._hot_cache[state.job_id] = state
+
+        _log.info("Hot cache loaded: %d jobs", len(self._hot_cache))
 
         # Start scheduler loop
         if not self._scheduler_task:
@@ -650,6 +669,32 @@ class QueueManager:
             await db.commit()
         await self._load_settings()
         return await self.get_settings()
+
+    async def clear_all_jobs(self) -> int:
+        """Cancel all non-terminal jobs and wipe the hot cache. Returns count cleared."""
+        import logging
+        _log = logging.getLogger(__name__)
+
+        async with self._lock:
+            # Cancel any running tasks
+            for state in self._hot_cache.values():
+                if state.task and not state.task.done():
+                    state.task.cancel()
+                if hasattr(state, '_engine_job'):
+                    state._engine_job._cancel_flag = True
+
+            async with get_db(self._db_path) as db:
+                cursor = await db.execute(
+                    "UPDATE jobs SET status = ? WHERE status NOT IN (?, ?)",
+                    (DownloadStatus.CANCELLED.value, DownloadStatus.COMPLETED.value, DownloadStatus.CANCELLED.value),
+                )
+                count = cursor.rowcount
+                await db.commit()
+
+            self._hot_cache.clear()
+
+        _log.info("Admin: cleared %d jobs", count)
+        return count
 
     async def shutdown(self):
         """Shutdown the background scheduler task."""

@@ -961,17 +961,35 @@ function onSpaNavigation() {
 // Signal 1: YouTube's custom navigation event
 window.addEventListener("yt-navigate-finish", onSpaNavigation);
 
-// Signal 2: MutationObserver on <title> for generic SPA support
-const titleObserver = new MutationObserver(() => {
-  // Title change is a strong signal that navigation occurred
+// Signal 2: Throttled body observer — catches generic SPA navigations
+// and ensures pills are re-injected when video elements reappear
+let _spaThrottleTimer = null;
+const spaBodyObserver = new MutationObserver(() => {
+  // URL change detection
   if (window.location.href !== _lastKnownUrl) {
     onSpaNavigation();
+    return;
   }
+
+  // Pill persistence: check if any visible video is missing its pill
+  if (_spaThrottleTimer) return;
+  _spaThrottleTimer = setTimeout(() => {
+    _spaThrottleTimer = null;
+    const videos = document.querySelectorAll("video");
+    for (const v of videos) {
+      if (!pillRegistry.has(v)) {
+        const rect = v.getBoundingClientRect();
+        if (rect.width >= 150 && rect.height >= 150) {
+          processVideoElement(v);
+        }
+      }
+    }
+  }, 1000); // 1s throttle to avoid performance issues
 });
-const titleEl = document.querySelector("title");
-if (titleEl) {
-  titleObserver.observe(titleEl, { childList: true });
-}
+spaBodyObserver.observe(document.body || document.documentElement, {
+  childList: true,
+  subtree: true,
+});
 
 // Signal 3: popstate for back/forward navigation
 window.addEventListener("popstate", onSpaNavigation);

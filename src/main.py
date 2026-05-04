@@ -749,6 +749,15 @@ async def update_settings(request: SettingsUpdateRequest) -> JSONResponse:
     )
 
 
+# ── Admin Endpoints ──────────────────────────────────────────────────────
+
+@app.post("/api/admin/clear-queue")
+async def clear_queue() -> JSONResponse:
+    """Emergency endpoint: cancel all non-terminal jobs and wipe the queue."""
+    count = await queue_manager.clear_all_jobs()
+    return JSONResponse(content={"cleared": count, "message": f"Cancelled {count} jobs"})
+
+
 # ── Phase 8: WebSocket Event Bus ─────────────────────────────────────────
 
 @app.websocket("/api/ws/events")
