@@ -373,28 +373,49 @@ async def _get_media_info(
                     pass
         if not h or h < 1:
             continue
+            
+        fps = f.get("fps") or 0
+        vc_lower = vc.lower()
+        is_mp4 = "avc1" in vc_lower or "mp4" in vc_lower or "h264" in vc_lower
         tbr = f.get("tbr") or 0
+        
+        score = (fps, 1 if is_mp4 else 0, tbr)
+        
         prev = best_format_per_height.get(h)
-        if not prev or tbr > (prev.get("tbr") or 0):
+        if not prev:
             best_format_per_height[h] = f
+        else:
+            prev_fps = prev.get("fps") or 0
+            prev_vc = (prev.get("vcodec") or "").lower()
+            prev_is_mp4 = "avc1" in prev_vc or "mp4" in prev_vc or "h264" in prev_vc
+            prev_tbr = prev.get("tbr") or 0
+            prev_score = (prev_fps, 1 if prev_is_mp4 else 0, prev_tbr)
+            
+            if score > prev_score:
+                best_format_per_height[h] = f
 
     options: list[QualityOption] = []
 
-    # Lead with "Best Quality" using bestvideo+bestaudio (yt-dlp resolves this)
-    best_badge = "4K" if max_height >= 2160 else "HD" if max_height >= 720 else None
-    options.append(QualityOption(
-        label=f"Best Quality ({max_height}p)",
-        format_id="bestvideo+bestaudio/best",
-        type="video",
-        badge=best_badge,
-    ))
-
-    # Sorted height tiers descending, skip the max (already covered above)
+    # Sorted height tiers descending
     for h in sorted(best_format_per_height.keys(), reverse=True):
-        if h == max_height:
-            continue
         fmt = best_format_per_height[h]
-        fid = fmt.get("format_id", f"bestvideo[height<={h}]+bestaudio/best")
+        raw_fid = str(fmt.get("format_id", ""))
+        ac = fmt.get("acodec") or "none"
+        
+        # If it's a video-only format, we must append +bestaudio/best
+        if ac == "none":
+            fid = f"{raw_fid}+bestaudio/best"
+        else:
+            fid = raw_fid
+
+        fps = fmt.get("fps")
+        fps_str = str(int(fps)) if fps and fps >= 30 else ""
+        ext = (fmt.get("ext") or "mp4").upper()
+        
+        size = fmt.get("filesize") or fmt.get("filesize_approx")
+        size_str = f" - ~{size / 1024 / 1024:.1f}MB" if size else ""
+        
+        label = f"{h}p{fps_str} ({ext}){size_str}"
 
         badge = None
         if h >= 2160:
@@ -407,13 +428,10 @@ async def _get_media_info(
             badge = "HQ"
 
         vc = (fmt.get("vcodec") or "").split(".")[0].lower()
-        ext = (fmt.get("ext") or "mp4").upper()
-        size = fmt.get("filesize") or fmt.get("filesize_approx")
-        size_str = f"{size / 1024 / 1024:.1f} MB" if size else None
 
         options.append(QualityOption(
-            label=f"{h}p",
-            format_id=f"{fid}+bestaudio/best",
+            label=label,
+            format_id=fid,
             type="video",
             badge=badge,
             vcodec=vc or None,
@@ -424,10 +442,10 @@ async def _get_media_info(
 
     # Always offer Audio Only
     options.append(QualityOption(
-        label="Audio Only (best)",
+        label="Audio Only (M4A/MP3)",
         format_id="bestaudio/best",
         type="audio",
-        badge=None,
+        badge="Audio",
     ))
 
     resp = InfoResponse(
