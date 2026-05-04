@@ -68,6 +68,18 @@ function connectWebSocket() {
 // Init WS
 connectWebSocket();
 
+// ─── Cookie Helper (IDM-style seamless injection) ────────────────────────
+
+async function getCookiesForUrl(url) {
+  try {
+    const cookies = await chrome.cookies.getAll({ url });
+    return cookies.map(c => `${c.name}=${c.value}`).join("; ");
+  } catch (e) {
+    console.warn(`${LOG} Failed to get cookies for ${url}:`, e);
+    return "";
+  }
+}
+
 // ─── Anti-Loop Guard ────────────────────────────────────────────────────
 
 // URLs recently dispatched — skip if Chrome fires onCreated for them
@@ -318,21 +330,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     console.log(`${LOG} Format cache MISS for tab ${tabId}, fetching…`);
     formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
-    fetch(`${DAEMON_INFO_URL}?url=${encodeURIComponent(url)}&drm_hint=${drmHint ? "true" : "false"}`, { signal: AbortSignal.timeout(30_000) })
-      .then(resp => {
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return resp.json();
+    
+    getCookiesForUrl(url).then(cookieStr => {
+      const headers = {};
+      if (cookieStr) headers["X-Thunder-Cookies"] = cookieStr;
+      
+      fetch(`${DAEMON_INFO_URL}?url=${encodeURIComponent(url)}&drm_hint=${drmHint ? "true" : "false"}`, { 
+        signal: AbortSignal.timeout(30_000),
+        headers
       })
-      .then(data => {
-        formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready", drmHint });
-        sendHybridResponse(data, false);
-      })
-      .catch(err => {
-        console.error(`${LOG} /api/info failed:`, err);
-        formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error", drmHint });
-        if (hasRawStream) sendHybridResponse(null, false);
-        else sendResponse({ ok: false, error: err.message });
-      });
+        .then(resp => {
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          return resp.json();
+        })
+        .then(data => {
+          formatCache.set(tabId, { url, data, ts: Date.now(), status: "ready", drmHint });
+          sendHybridResponse(data, false);
+        })
+        .catch(err => {
+          console.error(`${LOG} /api/info failed:`, err);
+          formatCache.set(tabId, { url, data: null, ts: Date.now(), status: "error", drmHint });
+          if (hasRawStream) sendHybridResponse(null, false);
+          else sendResponse({ ok: false, error: err.message });
+        });
+    });
 
     return true; // keep channel open for async response
   }
@@ -389,10 +410,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     console.log(`${LOG} Triggering download from content script:`, payload);
     
-    fetch(DAEMON_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    // IDM-style: inject browser cookies into the payload
+    const targetUrl = payload.page_url || payload.url;
+    getCookiesForUrl(targetUrl).then(cookieStr => {
+      if (cookieStr) payload.cookies = cookieStr;
+      
+      return fetch(DAEMON_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
     })
     .then(resp => {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -481,16 +508,9 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
   console.log(`${LOG} Intercepting native download: ${url}`);
 
   // 3. Extract metadata
-  const referer = downloadItem.referrer || "";
-  const userAgent = navigator.userAgent;
-  let cookieString = "";
-
-  try {
-    const cookies = await chrome.cookies.getAll({ url: url });
-    cookieString = cookies.map(c => `${c.name}=${c.value}`).join("; ");
-  } catch (err) {
-    console.warn(`${LOG} Failed to get cookies for ${url}:`, err);
-  }
+   const referer = downloadItem.referrer || "";
+    const userAgent = navigator.userAgent;
+    const cookieString = await getCookiesForUrl(url);
 
   // 4. Build payload
   const payload = {

@@ -36,7 +36,6 @@ class YtdlpClient:
             "merge_output_format": "mp4",
             "quiet": True,
             "no_warnings": True,
-            "cookiesfrombrowser": ("chrome",),
         }
 
         # Forward custom headers
@@ -52,9 +51,11 @@ class YtdlpClient:
 
         return opts
 
-    def extract_info(self, url: str) -> dict:
+    def extract_info(self, url: str, *, cookies: str | None = None) -> dict:
         """Fetch available formats without downloading."""
-        opts = {"quiet": True, "no_warnings": True, "cookiesfrombrowser": ("chrome",)}
+        opts: dict[str, Any] = {"quiet": True, "no_warnings": True}
+        if cookies:
+            opts["http_headers"] = {"Cookie": cookies}
         with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=False)
 

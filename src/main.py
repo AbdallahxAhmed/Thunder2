@@ -218,6 +218,7 @@ async def get_download_status(job_id: str) -> JSONResponse:
 
 @app.get("/api/info", response_model=InfoResponse)
 async def get_media_info(
+    request: Request,
     url: str = Query(..., min_length=1),
     drm_hint: bool = Query(
         default=False, description="Hint that DRM/manifest signals were detected"
@@ -240,8 +241,11 @@ async def get_media_info(
             ).model_dump(),
         )
 
+    # Extract browser cookies injected by the extension (IDM-style)
+    injected_cookies = request.headers.get("x-thunder-cookies", "")
+
     try:
-        info = await asyncio.to_thread(engine.extract_info, url)
+        info = await asyncio.to_thread(engine.extract_info, url, cookies=injected_cookies or None)
     except yt_dlp.utils.DownloadError as exc:
         if drm_hint:
             resp = InfoResponse(
