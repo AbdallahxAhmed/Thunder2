@@ -947,9 +947,33 @@ function onSpaNavigation() {
 
   dispatchPreWarm();
 
-  // Destroy all pills for the old page
-  for (const videoNode of Array.from(pillRegistry.keys())) {
-    destroyPill(videoNode);
+  // Explicitly RESET the download button's UI for existing pills instead of destroying them
+  // This prevents the pill from getting stuck on "Completed" in SPAs where the video element is reused
+  for (const instance of pillRegistry.values()) {
+    instance.jobId = null;
+    instance.taskId = null; // Legacy support
+    instance.jobStatus = null;
+    instance.jobProgress = 0;
+    instance.cachedUrl = null;
+    instance.cachedData = null;
+    instance.state = STATE_PILL; // Close menu if open
+
+    if (instance.activePollingInterval) {
+      clearInterval(instance.activePollingInterval);
+      instance.activePollingInterval = null;
+    }
+
+    // Explicitly reset the download button UI
+    instance.element.classList.remove("completed", "downloading", "error", "failed");
+    updatePillVisuals(instance);
+
+    const menu = instance.element.querySelector(".menu-content");
+    if (menu) menu.innerHTML = "";
+    
+    // Reset sizing from menu expansion
+    instance.element.style.width = "";
+    instance.element.style.height = "";
+    schedulePositionUpdate();
   }
 
   // Retry video detection — the new player may not be in the DOM yet

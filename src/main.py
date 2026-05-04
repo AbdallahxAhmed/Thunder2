@@ -354,7 +354,6 @@ async def _get_media_info(
 
     # Collect best format per height
     best_format_per_height: dict[int, dict] = {}
-    STANDARD_HEIGHTS = {144, 240, 360, 480, 720, 1080, 1440, 2160}
     for f in info.get("formats", []):
         vc = f.get("vcodec") or ""
         if vc == "none" or vc == "mhtml":
@@ -372,7 +371,7 @@ async def _get_media_info(
                     h = int(res.split("x")[-1])
                 except (ValueError, IndexError):
                     pass
-        if not h or h not in STANDARD_HEIGHTS:
+        if not h or h < 1:
             continue
             
         fps = f.get("fps") or 0
