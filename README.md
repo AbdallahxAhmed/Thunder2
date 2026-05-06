@@ -1,8 +1,10 @@
 # Thunder — Universal Headless DRM Downloader
 
-> **Active development — core queue manager implemented, integration tests and GUI progress pending.**
+> **Active development — core queue manager implemented. A full IDM-style desktop GUI app (Tauri) is planned as the primary interface.**
 
-A high-performance, browser-integrated download system that intercepts, decrypts, and downloads protected media streams. Combines a Chrome Manifest V3 extension with a Python FastAPI backend, a persistent SQLite-backed queue manager, and specialized download engines to achieve IDM-grade performance with full DRM support.
+Thunder is a full-stack download manager: a high-performance Python/FastAPI backend combined with a Chrome MV3 extension for browser integration, and a planned native desktop GUI (Tauri or equivalent) that will provide an IDM-grade experience — live progress bars, download queue management, history, site rules, and DRM support — all in one app.
+
+The backend is intentionally designed as a headless daemon with a clean REST + WebSocket API so it can be driven by any frontend: the Chrome extension today, the Tauri desktop app tomorrow.
 
 ---
 
@@ -27,67 +29,69 @@ A high-performance, browser-integrated download system that intercepts, decrypts
 
 ## Architecture
 
-The system operates as a three-tier hybrid pipeline:
+The system is designed as a **three-tier pipeline** today, and will grow into a **four-tier stack** once the desktop GUI is added:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                   Chrome Extension (MV3)                    │
-│                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │ eme_hook.js  │  │  content.js  │  │  background.js   │  │
-│  │ (MAIN world) │  │  (ISOLATED)  │  │ (Service Worker) │  │
-│  │              │  │              │  │                  │  │
-│  │ • EME Key    │  │ • Floating   │  │ • Tab Buffers    │  │
-│  │   Ripping    │──│   Pill UI    │──│ • Format Cache   │  │
-│  │ • PSSH       │  │ • Quality    │  │ • Daemon Proxy   │  │
-│  │   Capture    │  │   Picker     │  │ • Download Hijack│  │
-│  │ • License    │  │ • Drag/Drop  │  │ • WS Event Bus   │  │
-│  │   Intercept  │  │              │  │                  │  │
-│  └──────────────┘  └──────────────┘  └────────┬─────────┘  │
-│                                               │             │
-│  bridge.js (ISOLATED) — Event relay           │             │
-│  MAIN world ──CustomEvent──► ISOLATED ──chrome.runtime──►   │
-└───────────────────────────────────────────────┼─────────────┘
-                                                │
+┌──────────────────────────────────────────────────────────────────┐
+│  [Planned] Desktop GUI — Tauri (Rust + WebView)                  │
+│                                                                  │
+│  IDM-style download manager window:                              │
+│  • Download queue with live progress bars (speed, ETA, %)       │
+│  • Add URL / drag-and-drop downloads                             │
+│  • DRM key entry, site rules, per-site cookies                   │
+│  • Download history & file browser                               │
+│  • Settings panel (concurrency, directories, engine config)      │
+│  • System tray + notifications                                   │
+│                                                                  │
+│  Communicates with daemon via REST + WebSocket                   │
+└──────────────────────────────────────────────┬───────────────────┘
+                                               │ REST + WS
+┌──────────────────────────────────────────────┴───────────────────┐
+│                   Chrome Extension (MV3)                         │
+│  (Browser integration layer — captures DRM data, pills on video) │
+└──────────────────────────────────────────────┬───────────────────┘
+                                               │
                                HTTP POST /api/download
                                WS   ws://localhost:8000/api/ws/events
-                                                │
-┌───────────────────────────────────────────────▼─────────────┐
-│               Thunder Daemon (FastAPI @ :8000)               │
-│                                                             │
-│  ┌──────────┐  ┌───────────────────────┐  ┌─────────────┐  │
-│  │  Router  │  │    Queue Manager      │  │  Event Bus  │  │
-│  │          │  │  (SQLite + Hot Cache) │  │ (WebSocket) │  │
-│  │ Classify │  │                       │  │             │  │
-│  │ URL →    │──│ • Persistent jobs     │──│ • Real-time │  │
-│  │ Engine   │  │ • Concurrency limits  │  │   push to   │  │
-│  └──────────┘  │ • Scheduler loop      │  │   clients   │  │
-│                │ • Pause/Resume/Cancel │  └─────────────┘  │
-│                │ • Groups (playlists)  │                    │
-│                └───────────┬───────────┘                    │
-│                            │                                │
-│                  ┌─────────▼──────────────┐                 │
-│                  │    Engine Registry     │                 │
-│                  │ ┌────────────────────┐ │                 │
-│                  │ │ M3U8 Client        │ │                 │
-│                  │ │ • WidevineCDM      │ │                 │
-│                  │ │ • N_m3u8DL-RE      │ │                 │
-│                  │ ├────────────────────┤ │                 │
-│                  │ │ aria2 RPC Client   │ │                 │
-│                  │ ├────────────────────┤ │                 │
-│                  │ │ yt-dlp Engine      │ │                 │
-│                  │ └────────────────────┘ │                 │
-│                  └────────────────────────┘                 │
-└─────────────────────────────────────────────────────────────┘
+                                               │
+┌──────────────────────────────────────────────▼───────────────────┐
+│               Thunder Daemon (FastAPI @ :8000)                   │
+│                                                                  │
+│  ┌──────────┐  ┌───────────────────────┐  ┌─────────────┐       │
+│  │  Router  │  │    Queue Manager      │  │  Event Bus  │       │
+│  │          │  │  (SQLite + Hot Cache) │  │ (WebSocket) │       │
+│  │ Classify │  │                       │  │             │       │
+│  │ URL →    │──│ • Persistent jobs     │──│ • Real-time │       │
+│  │ Engine   │  │ • Concurrency limits  │  │   push to   │       │
+│  └──────────┘  │ • Scheduler loop      │  │   all GUIs  │       │
+│                │ • Pause/Resume/Cancel │  └─────────────┘       │
+│                │ • Groups (playlists)  │                         │
+│                └───────────┬───────────┘                         │
+│                            │                                     │
+│                  ┌─────────▼──────────────┐                      │
+│                  │    Engine Registry     │                      │
+│                  │  aria2 / yt-dlp / m3u8 │                      │
+│                  └────────────────────────┘                      │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-### Data Flow (DRM-Protected Stream)
+> **Backend design note:** The daemon is intentionally framework-agnostic. The REST + WebSocket API it exposes is the single contract that both the Chrome extension and the future Tauri GUI consume. No GUI logic lives in the backend — this keeps the daemon portable and ensures both frontends stay in sync automatically via the shared WebSocket event bus.
+
+### Data Flow (Current — Chrome Extension)
 
 1. **EME Hook** (`eme_hook.js`, MAIN world) intercepts `navigator.requestMediaKeySystemAccess` and `MediaKeySession` to capture PSSH init data, license server URLs, and authentication headers.
 2. **Key Ripping** — Hooks `MediaKeySession.prototype.update` to extract `KID:KEY` pairs directly from the browser's EME session (ClearKey format), bypassing server-side CDM negotiation entirely.
 3. **Bridge** (`bridge.js`, ISOLATED world) relays captured DRM metadata from the MAIN world to the Service Worker via `chrome.runtime.sendMessage`.
 4. **Background** (`background.js`) stores metadata in per-tab buffers and proxies the download request to the FastAPI daemon. Also maintains a WebSocket connection to the daemon's event bus to relay real-time job updates back to content scripts.
 5. **Backend** classifies the URL, creates a persistent job in SQLite via the Queue Manager, and the scheduler promotes it to an engine worker thread respecting global and per-engine concurrency limits.
+
+### Data Flow (Planned — Tauri Desktop GUI)
+
+1. User pastes a URL or adds a file in the desktop app.
+2. App sends `POST /api/download` (with optional DRM keys/cookies captured by the extension or entered manually).
+3. Daemon creates a job and the scheduler runs the download in the background.
+4. Desktop app receives real-time progress via the WebSocket event bus (`/api/ws/events`) and renders live progress bars, speed, and ETA.
+5. On completion, the app shows a system notification and updates the download history panel.
 
 ---
 
@@ -503,6 +507,45 @@ Sensitive data (Authorization headers, DRM keys) are redacted in production logs
 - [ ] Extension settings page (daemon URL, thread count, default quality)
 - [ ] Configurable download directory per site
 - [ ] Auto-update mechanism for yt-dlp and N_m3u8DL-RE binaries
+
+---
+
+### 🖥️ Planned — Desktop GUI App (IDM-style, Tauri)
+
+The main long-term goal of the project is a native desktop download manager that looks and feels like IDM but is fully open and DRM-capable. The Thunder daemon is the backend for this app.
+
+**Technology**: [Tauri](https://tauri.app/) (Rust shell + WebView frontend) is the current leading candidate — lightweight binary, native OS integration, cross-platform. Alternatives: Electron, Flutter, or a standalone web UI served by the daemon.
+
+**Planned features:**
+
+- [ ] **Download Queue Window** — IDM-style list with filename, size, progress bar, speed, ETA, status
+- [ ] **Add URL dialog** — paste any URL, auto-detect type, optional DRM fields (PSSH, license URL, keys)
+- [ ] **Live progress** — driven by the existing `/api/ws/events` WebSocket; no backend changes needed
+- [ ] **Download groups / playlists** — create a group from a playlist URL, track overall progress
+- [ ] **Pause / Resume / Cancel / Retry** — full lifecycle control via existing REST endpoints
+- [ ] **Download history** — searchable, filterable, persistent (SQLite already stores all jobs)
+- [ ] **Site rules** — per-domain settings: default engine, quality, cookies, download directory
+- [ ] **System tray** — minimize to tray, balloon notifications on completion
+- [ ] **Settings page** — concurrency limits, download directory, engine paths, Widevine device
+- [ ] **Browser extension pairing** — extension sends downloads directly to the running desktop app
+- [ ] **Dark / light theme** — follows OS theme
+
+**Backend API readiness for the GUI** (what is already done):
+
+| GUI Need | Backend Status |
+|----------|----------------|
+| Submit download | ✅ `POST /api/download` |
+| Live progress stream | ✅ `WS /api/ws/events` |
+| Job list + filters | ✅ `GET /api/jobs` |
+| Pause / Resume / Cancel / Retry | ✅ `POST /api/jobs/{id}/...` |
+| Delete job | ✅ `DELETE /api/jobs/{id}` |
+| Download groups | ✅ `POST/GET /api/groups` |
+| Settings (concurrency, dir) | ✅ `GET/PUT /api/settings` |
+| Engine health | ✅ `GET /api/health` |
+| Format/quality picker | ✅ `GET /api/info` |
+| Emergency queue clear | ✅ `POST /api/admin/clear-queue` |
+
+The backend is **GUI-ready**. All APIs the desktop app needs are already implemented and stable.
 
 ---
 
