@@ -43,7 +43,7 @@ class YtdlpClient:
             "no_warnings": True,
             "external_downloader": aria2_path,
             "external_downloader_args": {
-                aria2_path: ["-c", "-j", "16", "-x", "16", "-s", "16", "-k", "1M"],
+                "aria2c": ["-c", "-j", "16", "-x", "16", "-s", "16", "-k", "1M"],
             },
         }
         ffmpeg_location = None
