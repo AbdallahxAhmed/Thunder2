@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     aria2_rpc_url: str = "http://localhost:6800/jsonrpc"
     aria2_rpc_secret: str = ""
     download_dir: str = "downloads"
+    bin_dir: str = "bin"
     log_dir: str = "logs"
     log_level: str = "INFO"
     host: str = "0.0.0.0"

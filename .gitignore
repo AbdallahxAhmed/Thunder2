@@ -16,6 +16,7 @@ env/
 downloads/
 logs/
 data/
+bin/
 
 # IDE
 .vscode/

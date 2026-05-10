@@ -59,10 +59,10 @@ def _register_defaults() -> None:
     except ImportError:
         pass
 
-    # N_m3u8DL-RE — registered if binary is on PATH
-    import shutil
+    # N_m3u8DL-RE — registered if binary is on PATH or BIN_DIR
+    from src.binaries import resolve_binary
 
-    if shutil.which("N_m3u8DL-RE"):
+    if resolve_binary("N_m3u8DL-RE"):
         from src.engines.m3u8_client import M3u8Client
 
         register_engine("m3u8", M3u8Client())

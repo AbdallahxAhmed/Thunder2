@@ -13,6 +13,7 @@ The backend is intentionally designed as a headless daemon with a clean REST + W
 - [Architecture](#architecture)
 - [Core Features](#core-features)
 - [Requirements](#requirements)
+- [Platform Setup](#platform-setup)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [API Reference](#api-reference)
@@ -157,7 +158,8 @@ The daemon exposes `ws://localhost:8000/api/ws/events`. The background service w
 ### Runtime
 - Python 3.11+
 - Google Chrome 102+ (Manifest V3)
-- Binaries on PATH:
+- Go 1.22+ (only required for the installer)
+- Binaries in `BIN_DIR` (default `./bin`) or on `PATH`:
   - `aria2c` (with RPC enabled)
   - `yt-dlp`
   - `N_m3u8DL-RE`
@@ -174,23 +176,98 @@ pip install -r requirements.txt
 
 ---
 
+## Platform Setup
+
+Use these OS-specific steps to install runtime dependencies and start the daemon. The Go-based installer downloads required binaries (`aria2c`, `yt-dlp`, `N_m3u8DL-RE`, `ffmpeg/ffprobe`) into `./bin` so you don’t have to fetch them manually.
+
+### Linux (Ubuntu/Debian)
+
+1. Install prerequisites:
+   ```bash
+   sudo apt update
+   sudo apt install -y python3 python3-pip git
+   # Install Go 1.22+ from https://go.dev/dl/ if your distro repo is older
+   ```
+2. Install required binaries:
+   ```bash
+   go run ./installer --non-interactive --bin-dir ./bin
+   ```
+3. Install Python dependencies:
+   ```bash
+   python3 -m pip install -r requirements.txt
+   ```
+4. Run the daemon:
+   ```bash
+   BIN_DIR=./bin python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+   ```
+5. Load the Chrome extension from `./extension/`.
+
+### macOS (Homebrew)
+
+1. Install prerequisites:
+   ```bash
+   brew install python@3.11 go
+   ```
+2. Install required binaries:
+   ```bash
+   go run ./installer --non-interactive --bin-dir ./bin
+   ```
+3. Install Python dependencies:
+   ```bash
+   python3 -m pip install -r requirements.txt
+   ```
+4. Run the daemon:
+   ```bash
+   BIN_DIR=./bin python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+   ```
+5. Load the Chrome extension from `./extension/`.
+
+### Windows (PowerShell)
+
+1. Install prerequisites:
+   ```powershell
+   winget install --id Python.Python.3.11
+   winget install --id GoLang.Go
+   ```
+2. Install required binaries:
+   ```powershell
+   go run ./installer --non-interactive --bin-dir .\bin
+   ```
+3. Install Python dependencies:
+   ```powershell
+   py -3.11 -m pip install -r requirements.txt
+   ```
+4. Run the daemon:
+   ```powershell
+   $env:BIN_DIR = ".\bin"
+   py -3.11 -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+   ```
+5. Load the Chrome extension from `.\extension\`.
+
 ## Quick Start
 
 ```bash
-# 1. Clone and install
+# 1. Clone the repo
 git clone <repo-url> thunder
 cd thunder
+
+# 2. Install required binaries (recommended)
+go run ./installer
+# Non-interactive:
+# go run ./installer --non-interactive --bin-dir ./bin
+
+# 3. Install Python dependencies
 pip install -r requirements.txt
 
-# 2. Start the daemon
+# 4. Start the daemon
 uvicorn src.main:app --host 0.0.0.0 --port 8000
 # SQLite database is created automatically at data/thunder.db
 
-# 3. Load extension
+# 5. Load extension
 # Chrome → chrome://extensions → Enable Developer Mode
 # → Load Unpacked → Select ./extension/
 
-# 4. Navigate to any video page
+# 6. Navigate to any video page
 # The floating pill appears automatically on detected <video> elements
 # Click → Select format → Download dispatches to the backend
 ```
@@ -205,6 +282,7 @@ All settings can be overridden via environment variables or a `.env` file in the
 |----------|---------|-------------|
 | `WVD_PATH` | `""` | Path to Widevine CDM device file (`.wvd`) |
 | `DOWNLOAD_DIR` | `downloads` | Output directory for completed downloads |
+| `BIN_DIR` | `bin` | Directory for required binaries (`aria2c`, `yt-dlp`, `N_m3u8DL-RE`, `ffmpeg`, `ffprobe`) |
 | `PORT` | `8000` | FastAPI server port |
 | `HOST` | `0.0.0.0` | FastAPI server host |
 | `ARIA2_RPC_URL` | `http://localhost:6800/jsonrpc` | aria2 RPC endpoint |
@@ -223,6 +301,9 @@ Runtime concurrency limits can also be updated live via `PUT /api/settings` with
 
 #### `GET /api/health`
 Returns engine availability and daemon uptime.
+
+#### `GET /api/doctor`
+Returns a diagnostic report for required binaries, including search paths and install hints.
 
 #### `GET /api/info?url=<URL>&drm_hint=<bool>`
 Extracts available quality options via yt-dlp. Returns curated resolution tiers with format IDs, file sizes, codecs, and engine hints. Gracefully falls back to `unsupported` status for unrecognised URLs.
