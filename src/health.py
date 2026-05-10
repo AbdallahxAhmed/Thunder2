@@ -73,11 +73,10 @@ def check_m3u8() -> EngineHealth:
     status = binary_status("N_m3u8DL-RE")
     if status.found:
         return EngineHealth(name="m3u8", available=True, version=None)
-    search_hint = ", ".join(status.searched) if status.searched else "PATH"
     return EngineHealth(
         name="m3u8",
         available=False,
-        error=f"N_m3u8DL-RE binary not found (searched: {search_hint})",
+        error="N_m3u8DL-RE binary not found (run installer or set BIN_DIR)",
     )
 
 

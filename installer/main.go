@@ -27,11 +27,10 @@ import (
 type toolID string
 
 const (
-	toolAria2   toolID = "aria2c"
-	toolYtDlp   toolID = "yt-dlp"
-	toolM3u8    toolID = "N_m3u8DL-RE"
-	toolFfmpeg  toolID = "ffmpeg"
-	toolFfprobe toolID = "ffprobe"
+	toolAria2  toolID = "aria2c"
+	toolYtDlp  toolID = "yt-dlp"
+	toolM3u8   toolID = "N_m3u8DL-RE"
+	toolFfmpeg toolID = "ffmpeg"
 )
 
 type tool struct {
@@ -619,11 +618,14 @@ func extractZip(path, binDir string) error {
 		if file.FileInfo().IsDir() {
 			continue
 		}
-		name := filepath.Base(file.Name)
-		if !shouldCopyBinary(name) {
+		dest, err := safeDest(binDir, file.Name)
+		if err != nil {
 			continue
 		}
-		if err := writeZipFile(file, filepath.Join(binDir, name)); err != nil {
+		if !shouldCopyBinary(filepath.Base(dest)) {
+			continue
+		}
+		if err := writeZipFile(file, dest); err != nil {
 			return err
 		}
 	}
@@ -692,11 +694,13 @@ func extractTar(reader io.Reader, binDir string) error {
 		if header.FileInfo().IsDir() {
 			continue
 		}
-		name := filepath.Base(header.Name)
-		if !shouldCopyBinary(name) {
+		dest, err := safeDest(binDir, header.Name)
+		if err != nil {
 			continue
 		}
-		dest := filepath.Join(binDir, name)
+		if !shouldCopyBinary(filepath.Base(dest)) {
+			continue
+		}
 		out, err := os.Create(dest)
 		if err != nil {
 			return err
@@ -718,6 +722,20 @@ func gzipReader(r io.Reader) (io.ReadCloser, error) {
 		return nil, err
 	}
 	return gr, nil
+}
+
+func safeDest(binDir, entryName string) (string, error) {
+	cleaned := filepath.Base(filepath.Clean(entryName))
+	if cleaned == "." || cleaned == ".." || cleaned == "" {
+		return "", errors.New("invalid archive entry")
+	}
+	dest := filepath.Join(binDir, cleaned)
+	binClean := filepath.Clean(binDir)
+	destClean := filepath.Clean(dest)
+	if !strings.HasPrefix(destClean+string(os.PathSeparator), binClean+string(os.PathSeparator)) {
+		return "", errors.New("archive entry escapes bin dir")
+	}
+	return dest, nil
 }
 
 func shouldCopyBinary(name string) bool {
