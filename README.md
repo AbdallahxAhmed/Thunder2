@@ -154,7 +154,12 @@ The daemon exposes `ws://localhost:8000/api/ws/events`. The background service w
 
 ## Requirements
 
-### Runtime
+### Docker (recommended)
+- Docker Desktop (Windows/macOS) or Docker Engine + Compose (Linux)
+- No PATH edits or system-wide installs needed
+- Image bundles aria2c, ffmpeg/ffprobe, and N_m3u8DL-RE
+
+### Runtime (local install)
 - Python 3.11+
 - Google Chrome 102+ (Manifest V3)
 - Binaries on PATH:
@@ -163,7 +168,7 @@ The daemon exposes `ws://localhost:8000/api/ws/events`. The background service w
   - `N_m3u8DL-RE`
   - `ffmpeg` / `ffprobe`
 
-### Isolated binaries (recommended)
+### Isolated binaries (local install only)
 You can keep all required binaries inside the repo and only add them to `PATH` for the shell that runs the daemon. This keeps installs isolated from the OS.
 
 #### Linux (bash)
@@ -230,6 +235,22 @@ pip install -r requirements.txt
 
 ## Quick Start
 
+### Option A: Docker (recommended)
+```bash
+# 1. Clone
+git clone <repo-url> thunder
+cd thunder
+
+# 2. Build + run
+docker compose up --build
+
+# 3. Load extension
+# Chrome → chrome://extensions → Enable Developer Mode
+# → Load Unpacked → Select ./extension/
+```
+> Downloads, logs, and the SQLite DB are stored under `./data/`.
+
+### Option B: Local install
 ```bash
 # 1. Clone and install
 git clone <repo-url> thunder
