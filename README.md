@@ -13,6 +13,7 @@ The backend is intentionally designed as a headless daemon with a clean REST + W
 - [Architecture](#architecture)
 - [Core Features](#core-features)
 - [Requirements](#requirements)
+- [Platform Setup](#platform-setup)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [API Reference](#api-reference)
@@ -174,6 +175,74 @@ pip install -r requirements.txt
 - `device.wvd` — Widevine CDM device file for automated DRM negotiation (path set via `WVD_PATH` env var)
 
 ---
+
+## Platform Setup
+
+Use these OS-specific steps to install runtime dependencies and start the daemon. The Go-based installer downloads required binaries (`aria2c`, `yt-dlp`, `N_m3u8DL-RE`, `ffmpeg/ffprobe`) into `./bin` so you don’t have to fetch them manually.
+
+### Linux (Ubuntu/Debian)
+
+1. Install prerequisites:
+   ```bash
+   sudo apt update
+   sudo apt install -y python3 python3-pip git
+   # Install Go 1.22+ from https://go.dev/dl/ if your distro repo is older
+   ```
+2. Install required binaries:
+   ```bash
+   go run ./installer --non-interactive --bin-dir ./bin
+   ```
+3. Install Python dependencies:
+   ```bash
+   python3 -m pip install -r requirements.txt
+   ```
+4. Run the daemon:
+   ```bash
+   BIN_DIR=./bin python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+   ```
+5. Load the Chrome extension from `./extension/`.
+
+### macOS (Homebrew)
+
+1. Install prerequisites:
+   ```bash
+   brew install python@3.11 go
+   ```
+2. Install required binaries:
+   ```bash
+   go run ./installer --non-interactive --bin-dir ./bin
+   ```
+3. Install Python dependencies:
+   ```bash
+   python3 -m pip install -r requirements.txt
+   ```
+4. Run the daemon:
+   ```bash
+   BIN_DIR=./bin python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+   ```
+5. Load the Chrome extension from `./extension/`.
+
+### Windows (PowerShell)
+
+1. Install prerequisites:
+   ```powershell
+   winget install --id Python.Python.3.11
+   winget install --id GoLang.Go
+   ```
+2. Install required binaries:
+   ```powershell
+   go run ./installer --non-interactive --bin-dir .\bin
+   ```
+3. Install Python dependencies:
+   ```powershell
+   py -3.11 -m pip install -r requirements.txt
+   ```
+4. Run the daemon:
+   ```powershell
+   $env:BIN_DIR = ".\bin"
+   py -3.11 -m uvicorn src.main:app --host 0.0.0.0 --port 8000
+   ```
+5. Load the Chrome extension from `.\extension\`.
 
 ## Quick Start
 
