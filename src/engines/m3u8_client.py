@@ -16,7 +16,6 @@ import re
 import subprocess
 from typing import Any
 
-from src.binaries import resolve_binary
 from src.config import settings
 from src.models import DownloadJob, DownloadRequest
 
@@ -145,23 +144,9 @@ class M3u8Client:
             )
             return {"status": "failed", "error": error_msg}
 
-        # ── Step 2: Resolve binary ───────────────────────────────────
-        binary_path = resolve_binary("N_m3u8DL-RE")
-        if not binary_path:
-            error_msg = "N_m3u8DL-RE binary not found (set BIN_DIR or add to PATH)"
-            logger.error(
-                error_msg,
-                extra={
-                    "download_id": job.id,
-                    "engine": "m3u8",
-                    "event": "download.failed",
-                },
-            )
-            return {"status": "failed", "error": error_msg}
-
-        # ── Step 3: Build command ─────────────────────────────────────
+        # ── Step 2: Build command ─────────────────────────────────────
         cmd: list[str] = [
-            binary_path,
+            "N_m3u8DL-RE",
             request.url,
             "--save-dir", save_dir,
             "--save-name", save_name,
@@ -329,3 +314,4 @@ class M3u8Client:
                 },
             )
             return {"status": "failed", "error": error_msg}
+

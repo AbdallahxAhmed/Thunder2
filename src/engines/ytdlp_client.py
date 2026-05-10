@@ -12,7 +12,6 @@ from typing import Any
 
 import yt_dlp
 
-from src.binaries import resolve_binary
 from src.config import settings
 from src.models import DownloadJob, DownloadRequest
 
@@ -28,11 +27,7 @@ class YtdlpClient:
     def _build_opts(self, request: DownloadRequest) -> dict[str, Any]:
         """Construct the yt-dlp options dict from a download request."""
         format_str = request.format_id if getattr(request, 'format_id', None) else "bestvideo+bestaudio/best"
-
-        aria2_path = resolve_binary("aria2c") or "aria2c"
-        ffmpeg_path = resolve_binary("ffmpeg")
-        ffprobe_path = resolve_binary("ffprobe")
-
+        
         opts: dict[str, Any] = {
             "format": format_str,
             "outtmpl": os.path.join(
@@ -41,18 +36,9 @@ class YtdlpClient:
             "merge_output_format": "mp4",
             "quiet": True,
             "no_warnings": True,
-            "external_downloader": aria2_path,
-            "external_downloader_args": {
-                "aria2c": ["-c", "-j", "16", "-x", "16", "-s", "16", "-k", "1M"],
-            },
+            "external_downloader": "aria2c",
+            "external_downloader_args": {"aria2c": ["-c", "-j", "16", "-x", "16", "-s", "16", "-k", "1M"]},
         }
-        ffmpeg_location = None
-        if ffmpeg_path:
-            ffmpeg_location = os.path.dirname(ffmpeg_path)
-        elif ffprobe_path:
-            ffmpeg_location = os.path.dirname(ffprobe_path)
-        if ffmpeg_location:
-            opts["ffmpeg_location"] = ffmpeg_location
         return opts
 
     def _get_browser(self, user_agent: str | None) -> str:

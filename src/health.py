@@ -9,11 +9,11 @@ from __future__ import annotations
 
 import importlib
 import logging
+import shutil
 from typing import Optional
 
 import requests
 
-from src.binaries import binary_status
 from src.config import settings
 from src.models import EngineHealth
 
@@ -70,13 +70,13 @@ def check_ytdlp() -> EngineHealth:
 
 def check_m3u8() -> EngineHealth:
     """Check if N_m3u8DL-RE binary is available on PATH."""
-    status = binary_status("N_m3u8DL-RE")
-    if status.found:
+    path = shutil.which("N_m3u8DL-RE")
+    if path:
         return EngineHealth(name="m3u8", available=True, version=None)
     return EngineHealth(
         name="m3u8",
         available=False,
-        error="N_m3u8DL-RE binary not found (run installer or set BIN_DIR)",
+        error="N_m3u8DL-RE binary not found on PATH",
     )
 
 

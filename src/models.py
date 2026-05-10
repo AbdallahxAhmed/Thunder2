@@ -222,23 +222,6 @@ class HealthResponse(BaseModel):
     engines: list[EngineHealth]
 
 
-class BinaryCheck(BaseModel):
-    """Status of a required runtime binary."""
-
-    name: str
-    found: bool
-    path: Optional[str] = None
-    searched: list[str] = Field(default_factory=list)
-    hint: Optional[str] = None
-
-
-class DoctorResponse(BaseModel):
-    """Response for GET /api/doctor."""
-
-    bin_dir: str
-    binaries: list[BinaryCheck]
-
-
 class QualityOption(BaseModel):
     """A simplified, opinionated quality tier for the popup picker."""
 
@@ -379,3 +362,4 @@ class SettingsUpdateRequest(BaseModel):
     settings: dict[str, str] = Field(
         ..., description="Key-value pairs to update"
     )
+
