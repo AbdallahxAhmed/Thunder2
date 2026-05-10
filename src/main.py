@@ -19,7 +19,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import yt_dlp
 
-from src.binaries import binary_statuses
 from src.config import settings
 from src.engines import ENGINE_MAP, _register_defaults, get_engine
 from src.health import check_all_engines
@@ -32,8 +31,6 @@ from src.models import (
     DownloadStatus,
     ErrorResponse,
     HealthResponse,
-    DoctorResponse,
-    BinaryCheck,
     StatusResponse,
     InfoRequest,
     InfoResponse,
@@ -527,35 +524,6 @@ async def health_check() -> JSONResponse:
     )
 
 
-@app.get("/api/doctor", response_model=DoctorResponse)
-async def doctor_check() -> JSONResponse:
-    """Return binary availability diagnostics."""
-    hint_map = {
-        "aria2c": "Install via the Thunder installer or your package manager.",
-        "yt-dlp": "Install via the Thunder installer or pip install -r requirements.txt.",
-        "N_m3u8DL-RE": "Install via the Thunder installer (BIN_DIR preferred).",
-        "ffmpeg": "Install via the Thunder installer or your package manager.",
-        "ffprobe": "Install via the Thunder installer or your package manager.",
-    }
-    checks = []
-    for status in binary_statuses():
-        checks.append(
-            BinaryCheck(
-                name=status.name,
-                found=status.found,
-                path=status.path,
-                searched=status.searched,
-                hint=hint_map.get(status.name) if not status.found else None,
-            )
-        )
-    return JSONResponse(
-        content=DoctorResponse(
-            bin_dir=os.path.abspath(settings.bin_dir),
-            binaries=checks,
-        ).model_dump(),
-    )
-
-
 # ── Phase 7: Queue Management REST API ────────────────────────────────────
 
 
@@ -898,3 +866,4 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         await event_bus.disconnect(websocket)
+

@@ -3,12 +3,12 @@
 ## Prerequisites
 
 - **Python 3.11+**
-- **Go 1.22+** (only required for the installer)
-- **Required binaries installed to `BIN_DIR` (default `./bin`) or on PATH**:
-  - `aria2c` (with RPC enabled)
-  - `yt-dlp`
-  - `ffmpeg` / `ffprobe`
-  - `N_m3u8DL-RE` (for DRM streams)
+- **aria2** installed and running with RPC enabled:
+  ```bash
+  aria2c --enable-rpc=true --rpc-listen-all=false --rpc-secret=YOUR_TOKEN
+  ```
+- **ffmpeg** installed (required by yt-dlp for muxing)
+- **N_m3u8DL-RE** binary on PATH (optional — only needed for DRM streams)
 
 ## Install
 
@@ -16,11 +16,6 @@
 # Clone the repository
 git clone https://github.com/your-org/thunder.git
 cd thunder
-
-# Install required binaries (recommended)
-go run ./installer
-# Non-interactive:
-# go run ./installer --non-interactive --bin-dir ./bin
 
 # Create virtual environment
 python3.11 -m venv .venv
@@ -36,7 +31,6 @@ The daemon reads configuration from environment variables. All have sensible def
 
 ```bash
 # Optional — only set if you changed the defaults
-export BIN_DIR="bin"
 export ARIA2_RPC_URL="http://localhost:6800/jsonrpc"
 export ARIA2_RPC_SECRET="YOUR_TOKEN"
 export DOWNLOAD_DIR="downloads"
