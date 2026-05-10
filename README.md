@@ -163,6 +163,60 @@ The daemon exposes `ws://localhost:8000/api/ws/events`. The background service w
   - `N_m3u8DL-RE`
   - `ffmpeg` / `ffprobe`
 
+### Isolated binaries (recommended)
+You can keep all required binaries inside the repo and only add them to `PATH` for the shell that runs the daemon. This keeps installs isolated from the OS.
+
+#### Linux (bash)
+```bash
+mkdir -p .tools/bin
+
+# aria2c
+curl -L https://github.com/aria2/aria2/releases/latest/download/aria2-1.37.0-linux-gnu-x86_64-build1.tar.xz -o /tmp/aria2.tar.xz
+tar -xf /tmp/aria2.tar.xz -C /tmp
+cp /tmp/aria2-*/bin/aria2c .tools/bin/
+
+# yt-dlp
+curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o .tools/bin/yt-dlp
+
+# N_m3u8DL-RE
+curl -L https://github.com/nilaoda/N_m3u8DL-RE/releases/latest/download/N_m3u8DL-RE -o .tools/bin/N_m3u8DL-RE
+
+# ffmpeg / ffprobe
+curl -L https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-n6.1-latest-linux64-gpl-6.1.tar.xz -o /tmp/ffmpeg.tar.xz
+tar -xf /tmp/ffmpeg.tar.xz -C /tmp
+cp /tmp/ffmpeg-*/bin/ffmpeg /tmp/ffmpeg-*/bin/ffprobe .tools/bin/
+
+chmod +x .tools/bin/*
+export PATH="$PWD/.tools/bin:$PATH"
+```
+> If you're on ARM or a different distro, use the matching archive from each release page and update the filenames above.
+
+#### Windows (PowerShell)
+```powershell
+$tools = "$PWD\.tools\bin"
+New-Item -ItemType Directory -Force $tools | Out-Null
+
+# aria2c
+Invoke-WebRequest https://github.com/aria2/aria2/releases/latest/download/aria2-1.37.0-win-64bit-build1.zip -OutFile "$env:TEMP\aria2.zip"
+Expand-Archive "$env:TEMP\aria2.zip" -DestinationPath "$env:TEMP\aria2" -Force
+Get-ChildItem "$env:TEMP\aria2\*\aria2c.exe" | Copy-Item -Destination $tools
+
+# yt-dlp
+Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile "$tools\yt-dlp.exe"
+
+# N_m3u8DL-RE
+Invoke-WebRequest https://github.com/nilaoda/N_m3u8DL-RE/releases/latest/download/N_m3u8DL-RE.exe -OutFile "$tools\N_m3u8DL-RE.exe"
+
+# ffmpeg / ffprobe
+Invoke-WebRequest https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/ffmpeg-n6.1-latest-win64-gpl-6.1.zip -OutFile "$env:TEMP\ffmpeg.zip"
+Expand-Archive "$env:TEMP\ffmpeg.zip" -DestinationPath "$env:TEMP\ffmpeg" -Force
+Get-ChildItem "$env:TEMP\ffmpeg\*\bin\ffmpeg.exe" | Copy-Item -Destination $tools
+Get-ChildItem "$env:TEMP\ffmpeg\*\bin\ffprobe.exe" | Copy-Item -Destination $tools
+
+$env:Path = "$tools;$env:Path"
+```
+> If you need ARM or 32-bit builds, swap the archive names for the correct ones from each release page.
+
 ### Python Dependencies
 ```bash
 pip install -r requirements.txt
@@ -180,6 +234,10 @@ pip install -r requirements.txt
 # 1. Clone and install
 git clone <repo-url> thunder
 cd thunder
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# Windows PowerShell: .\.venv\Scripts\Activate.ps1
+# Windows CMD:        .\.venv\Scripts\activate.bat
 pip install -r requirements.txt
 
 # 2. Start the daemon
