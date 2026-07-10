@@ -60,6 +60,7 @@ class RedactionFilter(logging.Filter):
 def setup_logging(log_dir: str = "logs", log_level: str = "INFO") -> None:
     """Configure the root logger with JSON output to file and stderr."""
     import os
+    from logging.handlers import RotatingFileHandler
 
     os.makedirs(log_dir, exist_ok=True)
 
@@ -72,9 +73,12 @@ def setup_logging(log_dir: str = "logs", log_level: str = "INFO") -> None:
     formatter = JSONFormatter()
     redaction_filter = RedactionFilter()
 
-    # File handler — structured JSON logs
-    file_handler = logging.FileHandler(
-        os.path.join(log_dir, "thunder.log"), encoding="utf-8"
+    # File handler — structured JSON logs with rotation (max 10MB, keep 5 backups)
+    file_handler = RotatingFileHandler(
+        os.path.join(log_dir, "thunder.log"),
+        maxBytes=10 * 1024 * 1024,
+        backupCount=5,
+        encoding="utf-8"
     )
     file_handler.setFormatter(formatter)
     file_handler.addFilter(redaction_filter)

@@ -28,7 +28,8 @@ class EventBus:
             self._clients.add(websocket)
             
         # Send snapshot (QueueManager will provide this)
-        from src.queue_manager import queue_manager, DownloadStatus
+        from src.queue_manager import queue_manager
+        from src.models import DownloadStatus
         
         jobs = await queue_manager.list_jobs(limit=1000)
         snapshot_data = []
@@ -80,7 +81,11 @@ class EventBus:
     def broadcast(self, event_type: str, payload: dict[str, Any]):
         """Fire-and-forget broadcast to all connected clients."""
         event_data = {"type": event_type, "data": payload}
-        asyncio.create_task(self._broadcast_internal(event_data))
+        try:
+            asyncio.create_task(self._broadcast_internal(event_data))
+        except RuntimeError:
+            # No running event loop (e.g. during tests or shutdown)
+            pass
 
     def emit_state_changed(self, job_id: str, payload: dict[str, Any]):
         """Emit unthrottled job state change."""

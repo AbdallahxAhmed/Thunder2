@@ -7,7 +7,11 @@
   "permissions": [
     "notifications",
     "downloads",
-    "cookies"
+    "cookies",
+    "contextMenus",
+    "activeTab",
+    "tabs",
+    "storage"
   ],
   "host_permissions": [
     "*://*/*",
@@ -50,7 +54,8 @@
     }
   ],
   "action": {
-    "default_title": "Thunder"
+    "default_title": "Thunder",
+    "default_popup": "course_popup.html"
   },
   "icons": {
     "16": "icons/icon16.png",
@@ -66,5 +71,6 @@
         "<all_urls>"
       ]
     }
-  ]
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwXqIYU60alamAOFKENn1SFtCCLQy/mzspbly6KoEcxuf+0BotQE9szVO3lMELtd9m8ZpNbGzKPDWHDuINQz1LYjQSz9l+C9dcSB1aTWEDb4W9qfQthWDYbI/6BL7GaklAXP2OkNsMOGK2IX51IY2Y4YBSQdA4OsO7dgQBwBd/fNDiRMtz/fBRTuwX3VbJ2EuGvHrmxCuOatcn6GRk6RrMTUpJbCr5zEoiOQC513IGAAN2q/hnSldygxOedRzpDQ9UP6fz8+P7l9Q9cxoL9zwJIlRfsaKRJ/N626zXhtFbXhIFScYq8IRmOkDLixVsaB1v76d/tolTIahiFqgUE8MJQIDAQAB"
 }

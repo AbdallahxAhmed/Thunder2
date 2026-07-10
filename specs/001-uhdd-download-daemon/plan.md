@@ -1,7 +1,7 @@
-# Implementation Plan: Unified Headless Download Daemon (Thunder)
+# Implementation Plan: Unified Headless Download Daemon (UHDD)
 
-**Branch**: `001-thunder-download-daemon` | **Date**: 2026-04-26 | **Spec**: [spec.md](spec.md)
-**Input**: Feature specification from `specs/001-thunder-download-daemon/spec.md`
+**Branch**: `001-uhdd-download-daemon` | **Date**: 2026-04-26 | **Spec**: [spec.md](spec.md)
+**Input**: Feature specification from `specs/001-uhdd-download-daemon/spec.md`
 
 **Note**: This template is filled in by the `/speckit-plan` command. See `.specify/templates/plan-template.md` for the execution workflow.
 
@@ -46,7 +46,7 @@ common interface, orchestrated by a central router.
 ### Documentation (this feature)
 
 ```text
-specs/001-thunder-download-daemon/
+specs/001-uhdd-download-daemon/
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output
 ├── data-model.md        # Phase 1 output

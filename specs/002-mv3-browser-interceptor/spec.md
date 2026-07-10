@@ -1,4 +1,4 @@
-# Feature Specification: Thunder Browser Interceptor (MV3 Extension) — v4
+# Feature Specification: UHDD Browser Interceptor (MV3 Extension) — v4
 
 **Feature Branch**: `003-mv3-browser-interceptor`
 **Created**: 2026-04-26
@@ -27,14 +27,14 @@ The daemon receives this package and uses `pywidevine` with a local `.wvd` (Wide
 ## v3 Addition: The Native Download Hijacker
 
 ### Motivation
-Chrome's built-in download manager is single-threaded and provides no acceleration, no segmented downloads, and no integration with the Thunder pipeline. Files that Chrome would normally download natively (PDFs, ZIPs, ISOs, executables, etc.) should instead be routed to aria2 for multi-connection acceleration.
+Chrome's built-in download manager is single-threaded and provides no acceleration, no segmented downloads, and no integration with the UHDD pipeline. Files that Chrome would normally download natively (PDFs, ZIPs, ISOs, executables, etc.) should instead be routed to aria2 for multi-connection acceleration.
 
 ### v3 Approach (Download Hijacker)
 The extension uses the `chrome.downloads` API to intercept every download Chrome initiates:
 1. The `chrome.downloads.onCreated` event fires when Chrome starts a native download.
 2. The extension immediately **cancels** the native download via `chrome.downloads.cancel()`.
 3. The extension extracts download metadata: **URL**, **Referer**, **User-Agent**, and **Cookies** (via `chrome.cookies.getAll()`).
-4. The extension dispatches a JSON payload to the Thunder daemon (`/api/download`) with `engine: "aria2"` to explicitly request the aria2 engine.
+4. The extension dispatches a JSON payload to the UHDD daemon (`/api/download`) with `engine: "aria2"` to explicitly request the aria2 engine.
 5. An **Anti-Loop Guard** prevents infinite recursion — downloads initiated by the daemon or aria2 itself must not be re-intercepted.
 
 ## v6 Addition: The Ghost Overlay Tracking System
@@ -45,7 +45,7 @@ While v5 isolated the UI, the draggable floating button required manual user int
 ### v6 Approach (Ghost Overlay Tracking System)
 The extension injects a content script (`content.js`) into pages:
 1. **Top-Level Enforcement**: The script strictly enforces `if (window !== window.top) return;` to prevent iframe spam.
-2. **Root-Level Injection & Absolute Isolation**: It creates a single host element (`<div id="thunder-host"></div>`) strictly at the `document.documentElement` root level (NOT `document.body`) and attaches a closed Shadow DOM.
+2. **Root-Level Injection & Absolute Isolation**: It creates a single host element (`<div id="uhdd-host"></div>`) strictly at the `document.documentElement` root level (NOT `document.body`) and attaches a closed Shadow DOM.
 3. **Absolute Ghosting**: The host container uses `position: fixed !important; z-index: 2147483647 !important; top: 0; left: 0; pointer-events: none;`. The internal UI uses `pointer-events: auto`.
 4. **Anchor & Track**: It uses `getBoundingClientRect()` on the active `<video>` element to calculate its exact screen coordinates and anchors the UI to the top-right corner.
 5. **Anti-Jank Observers & Performance Mandate**: It tracks video position using `ResizeObserver`, `IntersectionObserver`, and window `scroll` events. ALL coordinate recalculations MUST be synced with the browser's paint cycle using `window.requestAnimationFrame` to forbid synchronous DOM thrashing.
@@ -58,7 +58,7 @@ The extension injects a content script (`content.js`) into pages:
 
 ### User Story 1 - Automatic DRM Stream Interception via License Proxy (Priority: P1)
 
-A user navigates to a website hosting a DRM-protected video. The extension silently intercepts the `.mpd` manifest URL, the PSSH from the EME initData, and the License Server URL with its associated request headers. Once the manifest URL and license metadata are captured, the extension sends the full package to the Thunder daemon. The daemon negotiates with the license server using `pywidevine`, extracts the plaintext `KID:KEY` pairs, and passes them to `N_m3u8DL-RE` for decrypted download.
+A user navigates to a website hosting a DRM-protected video. The extension silently intercepts the `.mpd` manifest URL, the PSSH from the EME initData, and the License Server URL with its associated request headers. Once the manifest URL and license metadata are captured, the extension sends the full package to the UHDD daemon. The daemon negotiates with the license server using `pywidevine`, extracts the plaintext `KID:KEY` pairs, and passes them to `N_m3u8DL-RE` for decrypted download.
 
 **Why this priority**: This is the entire reason the extension and daemon integration exists. Without server-side CDM negotiation, DRM content cannot be decrypted.
 
@@ -66,7 +66,7 @@ A user navigates to a website hosting a DRM-protected video. The extension silen
 
 **Acceptance Scenarios**:
 
-1. **Given** the extension is installed and the Thunder daemon is running with a valid `.wvd` file, **When** a user navigates to a page playing a Widevine-encrypted `.mpd` stream, **Then** the extension captures the manifest URL, PSSH, license server URL, and headers, and sends them to the daemon.
+1. **Given** the extension is installed and the UHDD daemon is running with a valid `.wvd` file, **When** a user navigates to a page playing a Widevine-encrypted `.mpd` stream, **Then** the extension captures the manifest URL, PSSH, license server URL, and headers, and sends them to the daemon.
 2. **Given** the daemon receives a license proxy payload, **When** `pywidevine` successfully negotiates with the license server, **Then** the daemon extracts plaintext `KID:KEY` pairs and passes them to `N_m3u8DL-RE`.
 3. **Given** `N_m3u8DL-RE` receives valid keys and a manifest URL, **When** download and decryption complete, **Then** a playable `.mp4` file exists in the `downloads/` directory.
 4. **Given** the extension intercepts a `.mpd` manifest via `fetch()` or `XMLHttpRequest`, **Then** the extension captures that URL without interfering with the page's normal playback.
@@ -75,22 +75,22 @@ A user navigates to a website hosting a DRM-protected video. The extension silen
 
 ### User Story 2 - User Notification on Download Dispatch (Priority: P2)
 
-After the extension successfully sends a payload to the Thunder daemon, the user receives a native Chrome notification confirming the download has been queued. If the daemon is unreachable, the user receives a notification indicating the backend is offline.
+After the extension successfully sends a payload to the UHDD daemon, the user receives a native Chrome notification confirming the download has been queued. If the daemon is unreachable, the user receives a notification indicating the backend is offline.
 
 **Why this priority**: Without feedback, the user has no way to know whether the extension is working or whether their download was actually queued.
 
-**Independent Test**: Trigger a DRM interception event. Verify a Chrome notification appears with "Thunder: Download Queued". Then stop the daemon and trigger another interception, verifying a notification appears with "Thunder: Backend Offline".
+**Independent Test**: Trigger a DRM interception event. Verify a Chrome notification appears with "UHDD: Download Queued". Then stop the daemon and trigger another interception, verifying a notification appears with "UHDD: Backend Offline".
 
 **Acceptance Scenarios**:
 
-1. **Given** the Thunder daemon is running at `http://localhost:8000`, **When** the extension sends a download payload and receives a success response (HTTP 2xx), **Then** a Chrome notification displays with the title "Thunder: Download Queued".
-2. **Given** the Thunder daemon is not running, **When** the extension attempts to send a download payload and the request fails, **Then** a Chrome notification displays with the title "Thunder: Backend Offline".
+1. **Given** the UHDD daemon is running at `http://localhost:8000`, **When** the extension sends a download payload and receives a success response (HTTP 2xx), **Then** a Chrome notification displays with the title "UHDD: Download Queued".
+2. **Given** the UHDD daemon is not running, **When** the extension attempts to send a download payload and the request fails, **Then** a Chrome notification displays with the title "UHDD: Backend Offline".
 
 ---
 
 ### User Story 3 - Non-DRM Manifest Interception (Priority: P3)
 
-A user navigates to a website hosting unencrypted HLS streams (`.m3u8`). The extension detects the manifest URL and sends it to the Thunder daemon without any license metadata. The daemon's yt-dlp engine handles the download.
+A user navigates to a website hosting unencrypted HLS streams (`.m3u8`). The extension detects the manifest URL and sends it to the UHDD daemon without any license metadata. The daemon's yt-dlp engine handles the download.
 
 **Why this priority**: Extends the interception pipeline to non-DRM content.
 
@@ -105,9 +105,9 @@ A user navigates to a website hosting unencrypted HLS streams (`.m3u8`). The ext
 
 ### User Story 4 - Native Download Hijacking to aria2 (Priority: P2)
 
-A user clicks a direct download link on any website (e.g., a PDF, ZIP, ISO, or executable). Instead of Chrome's built-in download manager handling the file, the extension intercepts the download via `chrome.downloads.onCreated`, cancels it, captures the URL along with the Referer header, User-Agent string, and site cookies, then dispatches the download to the Thunder daemon with an explicit `engine: "aria2"` directive. The daemon routes it to aria2 for multi-connection accelerated downloading.
+A user clicks a direct download link on any website (e.g., a PDF, ZIP, ISO, or executable). Instead of Chrome's built-in download manager handling the file, the extension intercepts the download via `chrome.downloads.onCreated`, cancels it, captures the URL along with the Referer header, User-Agent string, and site cookies, then dispatches the download to the UHDD daemon with an explicit `engine: "aria2"` directive. The daemon routes it to aria2 for multi-connection accelerated downloading.
 
-**Why this priority**: Bringing all direct file downloads under Thunder's control completes the interception pipeline — DRM streams (P1), notifications (P2), HLS (P3), and now generic files. aria2's segmented downloading provides significantly faster transfers than Chrome's single-threaded downloader.
+**Why this priority**: Bringing all direct file downloads under UHDD's control completes the interception pipeline — DRM streams (P1), notifications (P2), HLS (P3), and now generic files. aria2's segmented downloading provides significantly faster transfers than Chrome's single-threaded downloader.
 
 **Independent Test**: Install the extension, click a direct download link (e.g., a large ISO file), verify that Chrome's native download is cancelled, the daemon receives the payload with the correct URL, Referer, User-Agent, and Cookies, and aria2 begins the download.
 
@@ -116,7 +116,7 @@ A user clicks a direct download link on any website (e.g., a PDF, ZIP, ISO, or e
 1. **Given** the extension is installed with the `"downloads"` permission and the daemon is running, **When** a user clicks a direct download link on any website, **Then** Chrome's native download is cancelled and the extension dispatches the URL, Referer, User-Agent, and Cookies to the daemon with `engine: "aria2"`.
 2. **Given** the extension dispatches a download to the daemon, **When** the daemon processes the request with `engine: "aria2"`, **Then** aria2 begins downloading the file using multi-connection acceleration.
 3. **Given** the anti-loop guard is active, **When** a download originates from `localhost` or is flagged as daemon-initiated, **Then** the extension does NOT intercept or cancel that download.
-4. **Given** the daemon is unreachable, **When** the extension attempts to dispatch a hijacked download, **Then** a notification displays "Thunder: Backend Offline" and the original download is NOT cancelled (graceful fallback).
+4. **Given** the daemon is unreachable, **When** the extension attempts to dispatch a hijacked download, **Then** a notification displays "UHDD: Backend Offline" and the original download is NOT cancelled (graceful fallback).
 
 ---
 
@@ -130,7 +130,7 @@ A user navigates to any website playing a video. The extension automatically inj
 
 **Acceptance Scenarios**:
 
-1. **Given** the extension is installed, **When** a top-level page loads (`window === window.top`) and a video is present, **Then** a host element (`<div id="thunder-host">`) with a Shadow DOM is injected at the root level.
+1. **Given** the extension is installed, **When** a top-level page loads (`window === window.top`) and a video is present, **Then** a host element (`<div id="uhdd-host">`) with a Shadow DOM is injected at the root level.
 2. **Given** a page contains iframes, **When** the content script runs in those iframes, **Then** it immediately aborts, preventing iframe spam.
 3. **Given** the video moves due to scrolling or resizing, **When** `getBoundingClientRect()` updates, **Then** the floating button visually tracks and anchors to the video's top-right corner.
 4. **Given** the user clicks the button, **Then** the button sends `{type: "getFormats"}` to the background script and renders the mini-dropdown inside the Shadow DOM.
@@ -167,26 +167,26 @@ A user navigates to any website playing a video. The extension automatically inj
 - **FR-005**: Extension MUST hook `MediaKeySession.prototype.generateRequest` to extract the raw PSSH/initData and encode it as base64.
 - **FR-006**: Extension MUST use a bridge content script running in the isolated world to forward captured data from the MAIN world to the service worker via `chrome.runtime.sendMessage`.
 - **FR-007**: Extension MUST send captured payloads to `http://localhost:8000/api/download` as a JSON POST request with the format `{"url": "<manifest_url>", "pssh": "<base64>", "license_url": "<url>", "license_headers": {}}`.
-- **FR-008**: Extension MUST display Chrome notifications for dispatch success ("Thunder: Download Queued") and failure ("Thunder: Backend Offline").
+- **FR-008**: Extension MUST display Chrome notifications for dispatch success ("UHDD: Download Queued") and failure ("UHDD: Backend Offline").
 - **FR-009**: Extension MUST NOT interfere with the page's normal video playback or DRM license exchange.
 - **FR-010**: Extension MUST deduplicate manifest URLs per tab.
 - **FR-011**: Extension MUST discard buffered data when the user navigates away or closes the tab.
 - **FR-012**: Extension MUST provide two complementary UI surfaces: a toolbar popup (Quality Picker) and an in-page floating button (Content Script), both capable of dispatching downloads independently.
-- **FR-013**: The Thunder daemon MUST accept the new payload fields (`pssh`, `license_url`, `license_headers`) in `POST /api/download`.
-- **FR-014**: The Thunder daemon MUST use `pywidevine` with a local `.wvd` file to perform CDM negotiation when `pssh` + `license_url` are present.
-- **FR-015**: The Thunder daemon MUST extract plaintext `KID:KEY` pairs from the Widevine license response and pass them to `N_m3u8DL-RE` via the `--key` flag.
-- **FR-016**: The Thunder daemon MUST support multiple `--key` flags when multiple keys are extracted (video + audio tracks).
+- **FR-013**: The UHDD daemon MUST accept the new payload fields (`pssh`, `license_url`, `license_headers`) in `POST /api/download`.
+- **FR-014**: The UHDD daemon MUST use `pywidevine` with a local `.wvd` file to perform CDM negotiation when `pssh` + `license_url` are present.
+- **FR-015**: The UHDD daemon MUST extract plaintext `KID:KEY` pairs from the Widevine license response and pass them to `N_m3u8DL-RE` via the `--key` flag.
+- **FR-016**: The UHDD daemon MUST support multiple `--key` flags when multiple keys are extracted (video + audio tracks).
 - **FR-017**: Extension manifest MUST include the `"downloads"` permission to access the `chrome.downloads` API.
 - **FR-018**: Extension MUST register a `chrome.downloads.onCreated` listener in the service worker to intercept all native downloads.
 - **FR-019**: Extension MUST cancel intercepted native downloads via `chrome.downloads.cancel()` ONLY after confirming successful dispatch to the daemon.
 - **FR-020**: Extension MUST extract the download URL, Referer (from the originating tab), User-Agent, and Cookies (via `chrome.cookies.getAll()` for the download domain) from each intercepted download.
 - **FR-021**: Extension MUST implement an anti-loop guard that prevents re-interception of downloads originating from `localhost`, `127.0.0.1`, or URLs matching a known daemon-initiated download set.
 - **FR-022**: Extension MUST send hijacked download payloads to `POST /api/download` with the format `{"url": "<file_url>", "referer": "<referer>", "user_agent": "<ua>", "cookies": "<cookie_string>", "engine": "aria2"}`.
-- **FR-023**: The Thunder daemon `DownloadRequest` model MUST accept optional `referer`, `user_agent`, `cookies`, and `engine` fields.
-- **FR-024**: The Thunder daemon router MUST respect an explicit `engine` field in the request payload, bypassing normal URL classification when `engine` is provided.
+- **FR-023**: The UHDD daemon `DownloadRequest` model MUST accept optional `referer`, `user_agent`, `cookies`, and `engine` fields.
+- **FR-024**: The UHDD daemon router MUST respect an explicit `engine` field in the request payload, bypassing normal URL classification when `engine` is provided.
 - **FR-025**: Extension manifest MUST include a `content_scripts` block that injects `content.js` and `content.css` on `<all_urls>` in the `ISOLATED` world at `document_idle` with `all_frames: true`.
 - **FR-026**: Extension `content.js` MUST strictly enforce `window === window.top` to ensure it only runs in the main document.
-- **FR-027**: Extension `content.js` MUST create a single host element (`<div id="thunder-host"></div>`) strictly at the `document.documentElement` root level and attach a closed Shadow DOM.
+- **FR-027**: Extension `content.js` MUST create a single host element (`<div id="uhdd-host"></div>`) strictly at the `document.documentElement` root level and attach a closed Shadow DOM.
 - **FR-028**: Extension `content.js` MUST inject the UI and all styling dynamically into the shadow root to achieve absolute CSS isolation.
 - **FR-029**: Extension `content.js` MUST implement the Ghost Overlay Tracking System using `getBoundingClientRect()`, `ResizeObserver`, `IntersectionObserver`, and window `scroll` events to visually anchor the UI to the target `<video>` element.
 - **FR-030**: Extension `content.js` MUST assign `position: fixed !important; top: 0; left: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 2147483647 !important;` to the host element, allowing internal UI elements to use `pointer-events: auto`.
@@ -202,12 +202,12 @@ A user navigates to any website playing a video. The extension automatically inj
 - **License Server URL**: The URL the page's DRM player sends CDM challenges to.
 - **License Headers**: HTTP headers from the license request (Authorization, cookies, custom tokens).
 - **Interception Buffer**: Per-tab data structure accumulating manifest URL + license metadata until both are available.
-- **Download Payload**: JSON object sent to the Thunder daemon containing manifest URL, PSSH, license URL, and license headers.
+- **Download Payload**: JSON object sent to the UHDD daemon containing manifest URL, PSSH, license URL, and license headers.
 - **Widevine Device (`.wvd`)**: A binary file containing a Widevine CDM's private key material, used by `pywidevine` to negotiate licenses. Provided by the user.
 - **Hijacked Download**: A native Chrome download intercepted by `chrome.downloads.onCreated`, cancelled, and re-dispatched to the daemon for aria2 handling.
 - **Anti-Loop Guard**: A mechanism (URL set + localhost check) that prevents the extension from re-intercepting downloads that the daemon or aria2 itself initiated.
 - **Download Metadata**: The set of HTTP context captured from a hijacked download: URL, Referer header, User-Agent string, and serialized cookies.
-- **Shadow Host (`#thunder-host`)**: The root-level container holding the Shadow Root, acting as a transparent fullscreen overlay.
+- **Shadow Host (`#uhdd-host`)**: The root-level container holding the Shadow Root, acting as a transparent fullscreen overlay.
 - **Shadow Root**: The isolated DOM boundary preventing CSS and event leakage.
 - **Floating Button**: A small download icon injected into the shadow root, anchored to the video's coordinates.
 - **Mini-Dropdown**: A dark-mode overlay rendered inside the shadow root, displaying available download qualities.
@@ -225,7 +225,7 @@ A user navigates to any website playing a video. The extension automatically inj
 - **SC-007**: Zero download loops — the anti-loop guard prevents all daemon-initiated downloads from being re-intercepted.
 - **SC-008**: When the daemon is offline, native downloads fall through to Chrome's default handler with zero data loss.
 - **SC-009**: aria2 downloads initiated via the hijacker include correct Referer, User-Agent, and Cookies, resulting in successful downloads from sites that enforce these headers.
-- **SC-010**: The host element (`#thunder-host`) is injected into the body exactly once per top-level page, with zero injections in iframes.
+- **SC-010**: The host element (`#uhdd-host`) is injected into the body exactly once per top-level page, with zero injections in iframes.
 - **SC-011**: The UI successfully tracks the `<video>` element during window resizes, scrolling, and DOM mutations, accurately maintaining its anchored position using `getBoundingClientRect()`.
 - **SC-012**: The mini-dropdown renders quality options securely within the Shadow DOM, maintaining its dark-mode appearance even on pages with aggressive global CSS overrides.
 - **SC-013**: The button hides seamlessly when the video element is out of the viewport (via IntersectionObserver).
@@ -233,14 +233,14 @@ A user navigates to any website playing a video. The extension automatically inj
 ## Assumptions
 
 - The user has Chrome 102+ with Manifest V3 support.
-- The Thunder daemon is running locally on `http://localhost:8000`.
+- The UHDD daemon is running locally on `http://localhost:8000`.
 - Only Widevine DRM is in scope. FairPlay and PlayReady are out of scope.
 - The user provides a valid `.wvd` file and configures its path via `WVD_PATH` in `.env`.
 - `pywidevine` is added to the daemon's Python dependencies.
 - The extension has no build step — plain JavaScript files loaded directly by Chrome.
 - The `"downloads"` permission is acceptable to the user (it will appear in the extension's permission prompt).
 - The `"cookies"` permission may be needed if `chrome.cookies.getAll()` is used; if host_permissions `*://*/*` already grants cookie access, no additional permission is required.
-- aria2 is already configured and running as part of the Thunder daemon stack.
+- aria2 is already configured and running as part of the UHDD daemon stack.
 - Downloads from `localhost`/`127.0.0.1` are assumed to be daemon-initiated and are never hijacked.
 - The `content.css` file is now injected as a `<style>` tag directly into the Shadow Root by `content.js` or passed as a constructed stylesheet.
 - Shadow DOM isolation provides 100% protection from host site CSS; no complex selector resets are needed inside the shadow root.

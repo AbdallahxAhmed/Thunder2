@@ -1,1 +1,1 @@
-# Thunder — Universal Headless Download Daemon
+# Dark Downloader — Unified Headless Download Daemon

@@ -1,4 +1,4 @@
-# API Contract: Unified Headless Download Daemon (Thunder)
+# API Contract: Unified Headless Download Daemon (UHDD)
 
 **Date**: 2026-04-26
 **Base URL**: `http://localhost:8000`

@@ -1,4 +1,4 @@
-"""Shared test fixtures and mocks for Thunder tests."""
+"""Shared test fixtures and mocks for UHDD tests."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ import os
 
 os.environ.setdefault("ARIA2_RPC_URL", "http://localhost:6800/jsonrpc")
 os.environ.setdefault("ARIA2_RPC_SECRET", "test-secret")
-os.environ.setdefault("DOWNLOAD_DIR", "/tmp/thunder-test-downloads")
-os.environ.setdefault("LOG_DIR", "/tmp/thunder-test-logs")
+os.environ.setdefault("DOWNLOAD_DIR", "/tmp/uhdd-test-downloads")
+os.environ.setdefault("LOG_DIR", "/tmp/uhdd-test-logs")
 os.environ.setdefault("LOG_LEVEL", "DEBUG")
 
 
@@ -45,7 +45,7 @@ def mock_aria2_success():
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "jsonrpc": "2.0",
-        "id": "thunder",
+        "id": "dark-downloader",
         "result": "abc123def456",
     }
     mock_response.raise_for_status = MagicMock()
@@ -59,14 +59,14 @@ def mock_aria2_status():
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "jsonrpc": "2.0",
-        "id": "thunder",
+        "id": "dark-downloader",
         "result": {
             "gid": "abc123def456",
             "status": "complete",
             "totalLength": "104857600",
             "completedLength": "104857600",
             "downloadSpeed": "0",
-            "files": [{"path": "/tmp/thunder-test-downloads/file.zip"}],
+            "files": [{"path": "/tmp/uhdd-test-downloads/file.zip"}],
         },
     }
     with patch("src.engines.aria2_client.requests.post", return_value=mock_response) as m:
@@ -96,8 +96,7 @@ def mock_all_engines_available():
         EngineHealth(name="m3u8", available=True, version=None),
     ]
     with patch("src.main.check_all_engines", return_value=engines):
-        with patch("src.main._engine_health", engines):
-            yield engines
+        yield engines
 
 
 @pytest.fixture

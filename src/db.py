@@ -21,7 +21,7 @@ SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS jobs (
     id          TEXT PRIMARY KEY,
     url         TEXT    NOT NULL,
-    engine      TEXT    NOT NULL CHECK (engine IN ('aria2', 'ytdlp', 'm3u8')),
+    engine      TEXT    NOT NULL,
     status      TEXT    NOT NULL DEFAULT 'queued'
                         CHECK (status IN ('queued', 'downloading', 'completed', 'failed', 'paused', 'cancelled')),
     progress    REAL,
@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     drm_keys    TEXT,
     pssh        TEXT,
     license_url TEXT,
+    request_payload TEXT,
     priority    INTEGER NOT NULL DEFAULT 0,
     retry_count INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -89,7 +90,8 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
     ('engine_limit_aria2',    '4'),
     ('engine_limit_ytdlp',   '3'),
     ('engine_limit_m3u8',    '2'),
-    ('download_dir',         '"downloads"');
+    ('download_dir',         '"downloads"'),
+    ('auto_start_downloads',  'true');
 """
 
 

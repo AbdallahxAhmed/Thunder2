@@ -1,18 +1,18 @@
-# Feature Specification: Thunder Floating UI (The Draggable Ghost)
+# Feature Specification: UHDD Floating UI (The Draggable Ghost)
 
 **Feature Branch**: `004-floating-ui-rewrite`
 **Created**: 2026-04-27
 **Status**: Active
 
 ## 1. Overview
-The Thunder extension requires a complete rewrite of its in-page floating download button (`content.js` and `content.css`). The previous iteration suffered from CSS conflicts with hostile host sites, event hijacking during interactions, and Content Security Policy (CSP) blocks when trying to communicate with the local Python daemon. 
+The UHDD extension requires a complete rewrite of its in-page floating download button (`content.js` and `content.css`). The previous iteration suffered from CSS conflicts with hostile host sites, event hijacking during interactions, and Content Security Policy (CSP) blocks when trying to communicate with the local Python daemon. 
 
 This rewrite implements the "Dumb UI / Smart Interceptor" architecture to create a flawless, highly resilient "Draggable Ghost" overlay.
 
 ## 2. Architecture Pillars
 
 ### 2.1 UI Encapsulation (Shadow DOM)
-- A host element (`<div id="thunder-host">`) must be created and a closed Shadow Root attached (`mode: 'closed'`).
+- A host element (`<div id="uhdd-host">`) must be created and a closed Shadow Root attached (`mode: 'closed'`).
 - ALL UI elements and CSS must live strictly inside this shadow boundary to prevent host CSS leakage and Z-index wars.
 - CSS must be injected into the Shadow Root via a `<link rel="stylesheet" href="chrome-extension://.../content.css">` tag, with `content.css` exposed in `web_accessible_resources`.
 
@@ -65,7 +65,7 @@ This rewrite implements the "Dumb UI / Smart Interceptor" architecture to create
 - **FR-008**: ALL network requests (fetching formats, triggering downloads) MUST be delegated to `background.js` via `chrome.runtime.sendMessage`.
 
 ## 5. Key Entities
-- **Shadow Host**: The root element `div#thunder-host` containing the Shadow DOM.
+- **Shadow Host**: The root element `div#uhdd-host` containing the Shadow DOM.
 - **Draggable Ghost**: The main floating button element, positioned via absolute coordinates.
 - **Smart Interceptor (`background.js`)**: The service worker responsible for actual communication with the daemon, bypassing page-level CSP.
 

@@ -37,9 +37,21 @@ class WidevineCDM:
         """Lazily load the Widevine device and create a CDM instance."""
         if self._cdm is None:
             if not self.wvd_path:
+                # Check next to executable (frozen) or in CWD
+                import sys
+                exe_dir = os.path.dirname(sys.executable) if hasattr(sys, "frozen") else os.getcwd()
+                local_wvd = os.path.join(exe_dir, "device.wvd")
+                if os.path.exists(local_wvd):
+                    self.wvd_path = local_wvd
+                else:
+                    local_wvd_cwd = os.path.join(os.getcwd(), "device.wvd")
+                    if os.path.exists(local_wvd_cwd):
+                        self.wvd_path = local_wvd_cwd
+
+            if not self.wvd_path:
                 raise FileNotFoundError(
                     "WVD_PATH is not configured. "
-                    "Set WVD_PATH in .env to the path of your .wvd file."
+                    "Set WVD_PATH in .env or place device.wvd next to the executable."
                 )
             self._device = Device.load(self.wvd_path)
             self._cdm = Cdm.from_device(self._device)

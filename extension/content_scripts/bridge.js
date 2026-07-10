@@ -1,8 +1,9 @@
-/**
- * Bridge: Isolated world → Service Worker
- * Listens for MAIN world custom events and forwards via chrome.runtime.
- */
-window.addEventListener("thunder_payload_ready", (event) => {
+// Invalidate background tab buffer immediately at document_start
+if (window === window.top) {
+  chrome.runtime.sendMessage({ action: "CLEAR_BUFFER" }).catch(() => {});
+}
+
+window.addEventListener("uhdd_payload_ready", (event) => {
   if (!event.detail || typeof event.detail !== "object") return;
 
   const { type, url, pssh, licenseUrl, licenseHeaders, drmKeys, title, drmHint } = event.detail;

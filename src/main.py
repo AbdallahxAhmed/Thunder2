@@ -16,7 +16,9 @@ from typing import Any
 
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import yt_dlp
 
 from src.config import settings
@@ -44,6 +46,16 @@ from src.models import (
     GroupDetailResponse,
     SettingsResponse,
     SettingsUpdateRequest,
+    CourseHARRequest,
+    CourseHARResponse,
+    YanfaaCourseRequest,
+    YanfaaCourseResponse,
+    YanfaaVideoInfo,
+    BatchM3U8Request,
+    BatchM3U8Response,
+    AuthExtractRequest,
+    AuthSession,
+    ScheduleConfig,
 )
 from src.router import classify
 
@@ -64,6 +76,19 @@ async def lifespan(app: FastAPI):
 
     # Initialize QueueManager FIRST — binds asyncio primitives to the running loop
     await queue_manager.start()
+
+    # Load download_dir from DB settings if present to persist settings changes
+    try:
+        db_settings = await queue_manager.get_settings()
+        if "download_dir" in db_settings:
+            raw_val = db_settings["download_dir"]
+            # Strip quotes if stored as JSON/string hybrid
+            if (raw_val.startswith('"') and raw_val.endswith('"')) or (raw_val.startswith("'") and raw_val.endswith("'")):
+                raw_val = raw_val[1:-1]
+            if raw_val.strip():
+                settings.download_dir = raw_val.strip()
+    except Exception as e:
+        logger.error("Failed to load custom download_dir from DB: %s", e)
 
     # Logging
     setup_logging(log_dir=settings.log_dir, log_level=settings.log_level)
@@ -98,9 +123,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Thunder",
-    description="Universal Headless DRM Downloader",
-    version="0.1.0",
+    description="Universal Headless DRM Downloader + Course Downloader",
+    version="3.15.0",
     lifespan=lifespan,
+)
+
+# CORS — allow extension popup and local dashboard
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ── Error handlers ────────────────────────────────────────────────────────
@@ -139,9 +173,6 @@ async def request_correlation_middleware(request: Request, call_next):
     return response
 
 
-# ── Download orchestration is now handled by QueueManager ─────────────────
-
-
 # ── Endpoints ─────────────────────────────────────────────────────────────
 
 
@@ -173,9 +204,16 @@ async def submit_download(request: DownloadRequest) -> JSONResponse:
             },
         )
 
+    from src.models import DownloadStatus
+    job_status = DownloadStatus.QUEUED if request.auto_download else DownloadStatus.PAUSED
     job_id = str(uuid.uuid4())
     job = await queue_manager.create_job(
-        job_id=job_id, url=request.url, engine=engine_name,
+        job_id=job_id,
+        url=request.url,
+        engine=engine_name,
+        request_payload=request,
+        title=request.title,
+        status=job_status
     )
 
     return JSONResponse(
@@ -503,6 +541,364 @@ async def _get_media_info(
     return JSONResponse(content=resp.model_dump(mode="json"))
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# Course Downloader Endpoints
+# ══════════════════════════════════════════════════════════════════════════
+
+
+# ── HAR Extraction ────────────────────────────────────────────────────────
+
+
+@app.post("/api/course/har/scan")
+async def scan_har_files(directory: str = Query(default=".", description="Directory to scan")):
+    """Scan a directory for HAR files containing course data."""
+    from src.engines.course_har_engine import CourseHAREngine
+
+    engine = CourseHAREngine()
+    files = await asyncio.to_thread(engine.find_har_files, directory)
+    return JSONResponse(content={"files": files})
+
+
+@app.post("/api/course/har/extract")
+async def extract_from_har(request: CourseHARRequest):
+    """Extract M3U8 URLs from a HAR file (preview, no download)."""
+    from src.engines.course_har_engine import CourseHAREngine
+
+    engine = CourseHAREngine()
+    result = await asyncio.to_thread(engine.extract, request.har_path)
+
+    if "error" in result and result["total_found"] == 0:
+        return JSONResponse(
+            status_code=400,
+            content=ErrorResponse(
+                error_code="HAR_EXTRACTION_FAILED",
+                message=result["error"],
+            ).model_dump(),
+        )
+
+    return JSONResponse(
+        content=CourseHARResponse(**result).model_dump(),
+    )
+
+
+@app.post("/api/course/har/download")
+async def download_from_har(request: CourseHARRequest):
+    """Extract M3U8 URLs from HAR and queue downloads."""
+    from src.engines.course_har_engine import CourseHAREngine
+
+    engine = CourseHAREngine()
+    result = await asyncio.to_thread(engine.extract, request.har_path)
+
+    urls = result["urls"]
+    names = result["names"]
+    download_path = request.download_path or os.path.join(
+        settings.download_dir, request.course_name or "course"
+    )
+    cookies = engine.load_cookies()
+    referer = "https://cloudnativebasecamp.com/"
+
+    job_ids = []
+    for i, (url, name) in enumerate(zip(urls, names)):
+        # Filter if video_indices is provided
+        if request.video_indices is not None and i not in request.video_indices:
+            continue
+
+        custom_dir = None
+        if request.download_dirs:
+            if str(i) in request.download_dirs:
+                custom_dir = request.download_dirs[str(i)]
+            elif i in request.download_dirs:
+                custom_dir = request.download_dirs[i]
+
+        target_dir = custom_dir or download_path
+
+        # Create a download request for each video, using Thunder's m3u8 engine
+        dl_request = DownloadRequest(
+            url=url,
+            title=name,
+            page_url=referer,
+            referer=referer,
+            cookies="; ".join(f"{k}={v}" for k, v in cookies.items()) if cookies else None,
+            download_dir=target_dir,
+        )
+        # Route through the standard m3u8 engine for DRM support
+        from src.models import DownloadStatus
+        job = await queue_manager.create_job(
+            job_id=str(uuid.uuid4()),
+            url=url,
+            engine="m3u8",
+            request_payload=dl_request,
+            title=name,
+            status=DownloadStatus.QUEUED if request.auto_download else DownloadStatus.PAUSED
+        )
+        job_ids.append(job.job_id)
+
+    return JSONResponse(
+        content=CourseHARResponse(
+            urls=urls,
+            names=names,
+            missing_lessons=result.get("missing_lessons", []),
+            total_found=len(urls),
+            job_ids=job_ids,
+        ).model_dump(),
+    )
+
+
+# ── Yanfaa ────────────────────────────────────────────────────────────────
+
+
+@app.post("/api/yanfaa/course", response_model=YanfaaCourseResponse)
+async def get_yanfaa_course(course_slug: str = Query(..., min_length=1)):
+    """Fetch Yanfaa course metadata and video list."""
+    yanfaa = get_engine("yanfaa")
+    if yanfaa is None:
+        return JSONResponse(
+            status_code=503,
+            content=ErrorResponse(
+                error_code="ENGINE_UNAVAILABLE",
+                message="Yanfaa engine is not registered",
+            ).model_dump(),
+        )
+
+    if not yanfaa.is_authenticated:
+        return JSONResponse(
+            status_code=401,
+            content=ErrorResponse(
+                error_code="AUTH_REQUIRED",
+                message="Yanfaa auth not configured. Login first via /api/auth/extract",
+            ).model_dump(),
+        )
+
+    try:
+        course_data = await asyncio.to_thread(yanfaa.get_course, course_slug)
+        videos_raw = yanfaa.extract_videos(course_data)
+
+        videos = [
+            YanfaaVideoInfo(
+                index=v["index"],
+                brightcove_id=v["brightcove_id"],
+                title=v["title"],
+                duration=v.get("duration"),
+                duration_human=v.get("duration_human"),
+                chapter=v.get("chapter"),
+            )
+            for v in videos_raw
+        ]
+
+        return JSONResponse(
+            content=YanfaaCourseResponse(
+                title=course_data.get("title", course_slug),
+                slug=course_slug,
+                videos=videos,
+                total_videos=len(videos),
+            ).model_dump(),
+        )
+    except Exception as exc:
+        logger.exception("Yanfaa course fetch failed")
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error_code="YANFAA_ERROR",
+                message=str(exc),
+            ).model_dump(),
+        )
+
+
+@app.post("/api/yanfaa/download")
+async def download_yanfaa(request: YanfaaCourseRequest):
+    """Download videos from a Yanfaa course."""
+    yanfaa = get_engine("yanfaa")
+    if yanfaa is None or not yanfaa.is_authenticated:
+        return JSONResponse(
+            status_code=401,
+            content=ErrorResponse(
+                error_code="AUTH_REQUIRED",
+                message="Yanfaa auth not configured",
+            ).model_dump(),
+        )
+
+    try:
+        course_data = await asyncio.to_thread(yanfaa.get_course, request.course_slug)
+        all_videos = yanfaa.extract_videos(course_data)
+
+        if request.video_indices:
+            videos = [(i, all_videos[i]) for i in request.video_indices if i < len(all_videos)]
+        else:
+            videos = list(enumerate(all_videos))
+
+        job_ids = []
+        for i, v in videos:
+            video_url = await asyncio.to_thread(yanfaa.get_video_url, v["brightcove_id"])
+            if not video_url:
+                continue
+
+            custom_dir = None
+            if request.download_dirs:
+                if str(i) in request.download_dirs:
+                    custom_dir = request.download_dirs[str(i)]
+                elif i in request.download_dirs:
+                    custom_dir = request.download_dirs[i]
+
+            target_dir = custom_dir or request.download_path or settings.download_dir
+
+            dl_request = DownloadRequest(
+                url=video_url,
+                title=v["title"],
+                page_url="https://yanfaa.com/",
+                referer="https://yanfaa.com/",
+                download_dir=target_dir,
+            )
+            # Use ytdlp for Yanfaa videos
+            from src.models import DownloadStatus
+            job = await queue_manager.create_job(
+                job_id=str(uuid.uuid4()),
+                url=video_url,
+                engine="ytdlp",
+                request_payload=dl_request,
+                title=v["title"],
+                status=DownloadStatus.QUEUED if request.auto_download else DownloadStatus.PAUSED
+            )
+            job_ids.append(job.job_id)
+
+        return JSONResponse(
+            content=BatchM3U8Response(
+                job_ids=job_ids,
+                total=len(job_ids),
+            ).model_dump(),
+        )
+    except Exception as exc:
+        logger.exception("Yanfaa download failed")
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error_code="YANFAA_ERROR",
+                message=str(exc),
+            ).model_dump(),
+        )
+
+
+# ── Batch M3U8 ────────────────────────────────────────────────────────────
+
+
+@app.post("/api/course/m3u8/batch")
+async def batch_download_m3u8(request: BatchM3U8Request):
+    """Queue multiple M3U8 URLs for download, optionally with scheduling."""
+    from src.engines.course_m3u8_engine import calculate_next_time, get_default_schedule
+
+    schedule = request.schedule or get_default_schedule()
+    referer = request.referer or "https://cloudnativebasecamp.com/"
+    origin = request.origin or "https://cloudnativebasecamp.com"
+
+    job_ids = []
+    for i, url in enumerate(request.urls):
+        name = request.names[i] if request.names and i < len(request.names) else f"Video_{i + 1}"
+        dl_request = DownloadRequest(
+            url=url,
+            title=name,
+            page_url=referer,
+            referer=referer,
+        )
+        engine_name = classify(url)
+        if engine_name not in ("m3u8", "ytdlp"):
+            engine_name = "m3u8"  # Default to m3u8 for course streams
+        from src.models import DownloadStatus
+        job = await queue_manager.create_job(
+            job_id=str(uuid.uuid4()),
+            url=url,
+            engine=engine_name,
+            request_payload=dl_request,
+            title=name,
+            status=DownloadStatus.QUEUED if request.auto_download else DownloadStatus.PAUSED
+        )
+        job_ids.append(job.job_id)
+
+    return JSONResponse(
+        content=BatchM3U8Response(
+            job_ids=job_ids,
+            total=len(job_ids),
+        ).model_dump(),
+    )
+
+
+@app.post("/api/course/jobs/manual-complete")
+async def manual_complete_job(request: dict) -> dict:
+    """Manually insert a completed dummy job to mark a lesson as already downloaded."""
+    title = request.get("title")
+    if not title:
+        return {"ok": False, "error": "Missing title"}
+    
+    import uuid
+    from src.models import DownloadStatus
+    job_id = str(uuid.uuid4())
+    await queue_manager.create_job(
+        job_id=job_id,
+        url="manual-complete",
+        engine="m3u8",
+        status=DownloadStatus.COMPLETED,
+        title=title
+    )
+    return {"ok": True, "job_id": job_id}
+
+
+# ── Auth / Sessions ──────────────────────────────────────────────────────
+
+
+@app.get("/api/auth/sessions")
+async def list_auth_sessions():
+    """List saved auth sessions."""
+    sessions = []
+    data_dir = settings.course_data_dir
+    if os.path.exists(data_dir):
+        import json as _json
+        for fname in os.listdir(data_dir):
+            if fname.endswith("_auth.json") or fname == "auth.json":
+                path = os.path.join(data_dir, fname)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = _json.load(f)
+                    cookies = data.get("cookies", [])
+                    platform = fname.replace("_auth.json", "").replace("auth.json", "cloudnative")
+                    sessions.append(AuthSession(
+                        platform=platform,
+                        file=fname,
+                        cookies_count=len(cookies),
+                        has_token=bool(data.get("local_storage", {}).get("token")),
+                    ).model_dump())
+                except Exception:
+                    continue
+    return JSONResponse(content={"sessions": sessions})
+
+
+@app.get("/api/course/jobs")
+async def list_course_jobs():
+    """List all download jobs (all engines)."""
+    jobs = await queue_manager.list_jobs(limit=1000)
+    return JSONResponse(
+        content={
+            "jobs": [
+                {
+                    "id": j.job_id,
+                    "url": j.url,
+                    "engine": j.engine,
+                    "status": j.status.value if isinstance(j.status, DownloadStatus) else j.status,
+                    "progress": j.progress,
+                    "error": j.error,
+                    "title": j.title,
+                    "output_path": j.output_path,
+                    "created_at": j.created_at.isoformat(),
+                }
+                for j in jobs
+            ],
+            "total": len(jobs),
+        }
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Health Check (original)
+# ══════════════════════════════════════════════════════════════════════════
+
+
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check() -> JSONResponse:
     """Report daemon health and engine availability."""
@@ -692,7 +1088,8 @@ async def create_group(request: GroupCreateRequest) -> JSONResponse:
             progress=j.get("progress"), speed=j.get("speed"), eta=j.get("eta"),
             output_path=j.get("output_path"), file_size=j.get("file_size"),
             error=j.get("error"), group_id=j.get("group_id"), title=j.get("title"),
-            created_at=j["created_at"], updated_at=j["updated_at"],
+            created_at=datetime.fromisoformat(j["created_at"].replace("Z", "+00:00")),
+            updated_at=datetime.fromisoformat(j["updated_at"].replace("Z", "+00:00")),
         )
         for j in (detail.get("jobs", []) if detail else [])
     ]
@@ -702,7 +1099,8 @@ async def create_group(request: GroupCreateRequest) -> JSONResponse:
         content=GroupDetailResponse(
             id=group_id, name=request.name, source_url=request.source_url,
             status="active", jobs=jobs,
-            created_at=group["created_at"], updated_at=group["updated_at"],
+            created_at=datetime.fromisoformat(group["created_at"].replace("Z", "+00:00")),
+            updated_at=datetime.fromisoformat(group["updated_at"].replace("Z", "+00:00")),
         ).model_dump(mode="json"),
     )
 
@@ -717,7 +1115,8 @@ async def list_groups() -> JSONResponse:
             status=r["status"], total_jobs=r.get("total_jobs", 0),
             completed_jobs=r.get("completed_jobs", 0),
             failed_jobs=r.get("failed_jobs", 0),
-            created_at=r["created_at"], updated_at=r["updated_at"],
+            created_at=datetime.fromisoformat(r["created_at"].replace("Z", "+00:00")),
+            updated_at=datetime.fromisoformat(r["updated_at"].replace("Z", "+00:00")),
         )
         for r in rows
     ]
@@ -744,7 +1143,8 @@ async def get_group(group_id: str) -> JSONResponse:
             progress=j.get("progress"), speed=j.get("speed"), eta=j.get("eta"),
             output_path=j.get("output_path"), file_size=j.get("file_size"),
             error=j.get("error"), group_id=j.get("group_id"), title=j.get("title"),
-            created_at=j["created_at"], updated_at=j["updated_at"],
+            created_at=datetime.fromisoformat(j["created_at"].replace("Z", "+00:00")),
+            updated_at=datetime.fromisoformat(j["updated_at"].replace("Z", "+00:00")),
         )
         for j in detail.get("jobs", [])
     ]
@@ -752,8 +1152,9 @@ async def get_group(group_id: str) -> JSONResponse:
         content=GroupDetailResponse(
             id=detail["id"], name=detail["name"],
             source_url=detail.get("source_url"), status=detail["status"],
-            jobs=jobs, created_at=detail["created_at"],
-            updated_at=detail["updated_at"],
+            jobs=jobs,
+            created_at=datetime.fromisoformat(detail["created_at"].replace("Z", "+00:00")),
+            updated_at=datetime.fromisoformat(detail["updated_at"].replace("Z", "+00:00")),
         ).model_dump(mode="json")
     )
 
@@ -839,6 +1240,16 @@ async def update_settings(request: SettingsUpdateRequest) -> JSONResponse:
                     ).model_dump(),
                 )
     updated = await queue_manager.update_settings(request.settings)
+    
+    # Update in-memory settings.download_dir if it was changed
+    if "download_dir" in request.settings:
+        raw_val = request.settings["download_dir"]
+        if (raw_val.startswith('"') and raw_val.endswith('"')) or (raw_val.startswith("'") and raw_val.endswith("'")):
+            raw_val = raw_val[1:-1]
+        if raw_val.strip():
+            settings.download_dir = raw_val.strip()
+            os.makedirs(settings.download_dir, exist_ok=True)
+            
     return JSONResponse(
         content=SettingsResponse(settings=updated).model_dump()
     )
@@ -867,3 +1278,26 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         await event_bus.disconnect(websocket)
 
+
+# ── Dashboard static files ───────────────────────────────────────────────
+
+@app.post("/api/download/{job_id}/retry", status_code=202)
+async def retry_download(job_id: str) -> JSONResponse:
+    """Retry a failed or cancelled download job, resuming the download."""
+    try:
+        await queue_manager.retry_job(job_id)
+    except ValueError as e:
+        return JSONResponse(
+            status_code=409,
+            content=ErrorResponse(
+                error_code="INVALID_STATE_TRANSITION", message=str(e)
+            ).model_dump(),
+        )
+    return JSONResponse(content={"status": "queued", "message": "Download retried successfully."})
+
+
+# ── Dashboard static files ───────────────────────────────────────────────
+
+_dashboard_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard")
+if os.path.exists(_dashboard_dir):
+    app.mount("/dashboard", StaticFiles(directory=_dashboard_dir, html=True), name="dashboard")

@@ -51,6 +51,15 @@ KNOWN_MEDIA_DOMAINS: set[str] = {
     "fb.watch",
 }
 
+# Course platform domains — route to specialised engines.
+COURSE_DOMAINS: dict[str, str] = {
+    "yanfaa.com": "yanfaa",
+    "www.yanfaa.com": "yanfaa",
+    "app.yanfaa.com": "yanfaa",
+    "cloudnativebasecamp.com": "course_har",
+    "www.cloudnativebasecamp.com": "course_har",
+}
+
 
 def classify(
     url: str,
@@ -92,8 +101,17 @@ def classify(
         logger.debug("Route → m3u8 (.mpd URL)", extra={"event": "route.mpd"})
         return "m3u8"
 
-    # Rule 3: known media site domain → yt-dlp
+    # Rule 3: known course platform → specialised engine
     domain = parsed.hostname or ""
+    if domain in COURSE_DOMAINS:
+        course_engine = COURSE_DOMAINS[domain]
+        logger.debug(
+            "Route → %s (course platform: %s)", course_engine, domain,
+            extra={"event": "route.course"},
+        )
+        return course_engine
+
+    # Rule 4: known media site domain → yt-dlp
     if domain in KNOWN_MEDIA_DOMAINS:
         logger.debug(
             "Route → ytdlp (known domain: %s)", domain, extra={"event": "route.media"}

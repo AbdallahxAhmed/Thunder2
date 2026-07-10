@@ -80,9 +80,39 @@ def check_m3u8() -> EngineHealth:
     )
 
 
+def check_course_har() -> EngineHealth:
+    """CourseHAR engine — always available (pure Python)."""
+    return EngineHealth(name="course_har", available=True, version="1.0")
+
+
+def check_yanfaa() -> EngineHealth:
+    """Yanfaa engine — check if auth is configured."""
+    import os
+    auth_file = os.path.join(settings.course_data_dir, "yanfaa_auth.json")
+    has_auth = os.path.exists(auth_file)
+    return EngineHealth(
+        name="yanfaa",
+        available=True,
+        version="1.0",
+        error=None if has_auth else "No yanfaa_auth.json found (login required)",
+    )
+
+
+def check_course_m3u8() -> EngineHealth:
+    """CourseM3U8 engine — always available (delegates to m3u8/ytdlp)."""
+    return EngineHealth(name="course_m3u8", available=True, version="1.0")
+
+
 def check_all_engines() -> list[EngineHealth]:
     """Run all engine health checks and return results."""
-    results = [check_aria2(), check_ytdlp(), check_m3u8()]
+    results = [
+        check_aria2(),
+        check_ytdlp(),
+        check_m3u8(),
+        check_course_har(),
+        check_yanfaa(),
+        check_course_m3u8(),
+    ]
     for r in results:
         level = logging.INFO if r.available else logging.WARNING
         logger.log(
@@ -93,3 +123,4 @@ def check_all_engines() -> list[EngineHealth]:
             extra={"engine": r.name, "event": "engine.health_check"},
         )
     return results
+

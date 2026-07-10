@@ -7,7 +7,7 @@
 
 ## Summary
 
-This plan outlines the architecture for the "Hybrid Floating UI" of the Thunder browser extension. It implements the Hybrid Data Pipeline by migrating the stream-fetching logic entirely to the background script and enforcing 100% UI parity between the `popup.html`/`popup.css` design and the injected `content.js`/`content.css` floating interface.
+This plan outlines the architecture for the "Hybrid Floating UI" of the Dark Downloader browser extension. It implements the Hybrid Data Pipeline by migrating the stream-fetching logic entirely to the background script and enforcing 100% UI parity between the `popup.html`/`popup.css` design and the injected `content.js`/`content.css` floating interface.
 
 ## Technical Context
 
@@ -62,4 +62,4 @@ extension/
 
 > **Fill ONLY if Constitution Check has violations that must be justified**
 
-*(No violations. All constraints align precisely with the established Thunder Constitution).*
+*(No violations. All constraints align precisely with the established Dark Downloader Constitution).*

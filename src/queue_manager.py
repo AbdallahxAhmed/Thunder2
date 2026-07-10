@@ -5,6 +5,8 @@ Replaces the old in-memory job_manager.py.
 """
 
 import asyncio
+import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, Optional, List, Any
@@ -12,6 +14,8 @@ from typing import Dict, Optional, List, Any
 from src.models import DownloadStatus
 from src.db import get_db, init_db
 from src.event_bus import event_bus
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -32,6 +36,7 @@ class ActiveJobState:
     group_id: Optional[str] = None
     title: Optional[str] = None
     task: Optional[asyncio.Task] = None
+    request_payload_json: Optional[str] = None
     kwargs: Dict[str, Any] = __import__("dataclasses").field(default_factory=dict)
 
 
@@ -65,9 +70,6 @@ class QueueManager:
 
     async def start(self):
         """Initialize database, asyncio primitives, and load non-terminal jobs into Hot Cache."""
-        import logging
-        _log = logging.getLogger(__name__)
-
         if self._lock is None:
             self._lock = asyncio.Lock()
         if self._queue_wakeup_event is None:
@@ -109,7 +111,8 @@ class QueueManager:
                     file_size=row["file_size"],
                     error=row["error"],
                     group_id=row["group_id"],
-                    title=row["title"]
+                    title=row["title"],
+                    request_payload_json=row.get("request_payload"),
                 )
                 self._hot_cache[state.job_id] = state
 
@@ -123,13 +126,12 @@ class QueueManager:
     def _count_active_slots(self) -> tuple[int, Dict[str, int]]:
         """Count DOWNLOADING jobs globally and per-engine."""
         global_active = 0
-        engine_active = {"aria2": 0, "ytdlp": 0, "m3u8": 0}
+        engine_active: Dict[str, int] = {}
         
         for state in self._hot_cache.values():
             if state.status == DownloadStatus.DOWNLOADING:
                 global_active += 1
-                if state.engine in engine_active:
-                    engine_active[state.engine] += 1
+                engine_active[state.engine] = engine_active.get(state.engine, 0) + 1
                     
         return global_active, engine_active
 
@@ -146,10 +148,24 @@ class QueueManager:
         if not engine:
             await self.update_job(job_id, status=DownloadStatus.FAILED, error=f"Engine {state.engine} not found")
             return
+        
+        # Reconstruct request from stored payload or build minimal one
+        request_payload = None
+        if state.request_payload_json:
+            try:
+                payload_data = json.loads(state.request_payload_json)
+                request_payload = DownloadRequest(**payload_data)
+            except Exception:
+                _log.warning("Failed to deserialize request_payload for %s", job_id)
+        
+        if request_payload is None:
+            request_payload = DownloadRequest(url=state.url, engine=state.engine)
             
         # Build objects for engine protocol
-        job = DownloadJob(id=job_id, url=state.url, engine=state.engine, status="downloading", **state.kwargs)
-        req = DownloadRequest(url=state.url, engine=state.engine, **state.kwargs)
+        job = DownloadJob(
+            id=job_id, url=state.url, engine=state.engine, status="downloading",
+            request_payload=request_payload,
+        )
         
         # Make the job cancellable
         job._cancel_flag = False
@@ -157,13 +173,17 @@ class QueueManager:
         state._engine_client = engine
         
         def _execute():
-            return engine.execute(job, req)
+            return engine.execute(job, request_payload)
             
         # Poll progress asynchronously
         async def _progress_poller():
             while True:
                 await asyncio.sleep(1)
-                await self.update_job(job_id, progress=job.progress, speed=job.speed, eta=job.eta)
+                await self.update_job(
+                    job_id,
+                    progress=getattr(job, 'progress', None),
+                    speed=getattr(job, 'speed', None),
+                )
                 
         poller = asyncio.create_task(_progress_poller())
         
@@ -221,8 +241,7 @@ class QueueManager:
                 
             jobs_to_promote.append(job_id)
             global_active += 1
-            if engine in engine_active:
-                engine_active[engine] += 1
+            engine_active[engine] = engine_active.get(engine, 0) + 1
                 
         for job_id in jobs_to_promote:
             state = await self.get_job(job_id)
@@ -231,11 +250,11 @@ class QueueManager:
 
     async def _scheduler_loop(self):
         """Background task evaluating the queue."""
-        import logging
-        _log = logging.getLogger(__name__)
+        import time as _time
+
         _log.info("Scheduler loop started")
         heartbeat_interval = 30
-        last_heartbeat = 0
+        last_heartbeat = 0.0
         while True:
             try:
                 # Use a timeout so we wake up periodically even if no event fires
@@ -246,7 +265,6 @@ class QueueManager:
                 self._queue_wakeup_event.clear()
 
                 # Heartbeat logging
-                import time as _time
                 now = _time.monotonic()
                 if now - last_heartbeat >= heartbeat_interval:
                     active, _ = self._count_active_slots()
@@ -269,16 +287,53 @@ class QueueManager:
         """Called when a job reaches a terminal/paused state."""
         self._queue_wakeup_event.set()
 
-    async def create_job(self, job_id: str, url: str, engine: str, **kwargs) -> ActiveJobState:
-        """Create a job in SQLite and add to Hot Cache."""
+    async def create_job(self, job_id: str, url: str, engine: str,
+                         request_payload=None, **kwargs) -> ActiveJobState:
+        """Create a job in SQLite and add to Hot Cache.
+        
+        If request_payload (a DownloadRequest) is provided, it will be
+        serialized and stored for retry capability.
+        """
         now = datetime.now(timezone.utc)
         
-        db_kwargs = {k: v for k, v in kwargs.items() if k not in ["task"]}
+        # Serialize request_payload for persistence
+        request_payload_json = None
+        if request_payload is not None:
+            try:
+                request_payload_json = request_payload.model_dump_json()
+            except Exception:
+                pass
+        
+        initial_status = kwargs.get("status", None)
+        if initial_status is None:
+            initial_status = DownloadStatus.QUEUED
+            try:
+                async with get_db(self._db_path) as db:
+                    cursor = await db.execute("SELECT value FROM settings WHERE key = 'auto_start_downloads'")
+                    row = await cursor.fetchone()
+                    if row and row["value"] == "false":
+                        initial_status = DownloadStatus.PAUSED
+            except Exception:
+                pass
+
+        if isinstance(initial_status, str):
+            for s in DownloadStatus:
+                if s.value == initial_status:
+                    initial_status = s
+                    break
+
+        db_kwargs = {k: v for k, v in kwargs.items() if k not in ["task", "request_payload", "status"]}
         
         async with self._lock:
             async with get_db(self._db_path) as db:
                 columns = ["id", "url", "engine", "status", "created_at", "updated_at"]
-                values = [job_id, url, engine, DownloadStatus.QUEUED.value, now.isoformat().replace("+00:00", "Z"), now.isoformat().replace("+00:00", "Z")]
+                values = [job_id, url, engine, initial_status.value,
+                          now.isoformat().replace("+00:00", "Z"),
+                          now.isoformat().replace("+00:00", "Z")]
+                
+                if request_payload_json:
+                    columns.append("request_payload")
+                    values.append(request_payload_json)
                 
                 for k, v in db_kwargs.items():
                     columns.append(k)
@@ -294,10 +349,11 @@ class QueueManager:
                 job_id=job_id,
                 url=url,
                 engine=engine,
-                status=DownloadStatus.QUEUED,
+                status=initial_status,
                 created_at=now,
                 updated_at=now,
-                **kwargs
+                request_payload_json=request_payload_json,
+                **db_kwargs,
             )
             self._hot_cache[job_id] = state
             
@@ -333,7 +389,8 @@ class QueueManager:
                 file_size=row["file_size"],
                 error=row["error"],
                 group_id=row["group_id"],
-                title=row["title"]
+                title=row["title"],
+                request_payload_json=row.get("request_payload"),
             )
 
     async def update_job(self, job_id: str, **kwargs) -> Optional[ActiveJobState]:
@@ -406,7 +463,8 @@ class QueueManager:
             
         return state
 
-    async def list_jobs(self, limit: int = 50, offset: int = 0, status: Optional[str] = None, engine: Optional[str] = None, group_id: Optional[str] = None) -> List[ActiveJobState]:
+    async def list_jobs(self, limit: int = 50, offset: int = 0, status: Optional[str] = None,
+                        engine: Optional[str] = None, group_id: Optional[str] = None) -> List[ActiveJobState]:
         """List active jobs from cache and database."""
         async with self._lock:
             query = "SELECT * FROM jobs WHERE 1=1"
@@ -450,7 +508,8 @@ class QueueManager:
                         file_size=row["file_size"],
                         error=row["error"],
                         group_id=row["group_id"],
-                        title=row["title"]
+                        title=row["title"],
+                        request_payload_json=row.get("request_payload"),
                     ))
             return results
 
@@ -521,8 +580,12 @@ class QueueManager:
                 state = await self._get_job_unlocked(job_id)
             if not state or state.status != DownloadStatus.FAILED:
                 raise ValueError("Only FAILED jobs can be retried.")
+
+            # Re-add to hot cache if it was evicted
+            if job_id not in self._hot_cache:
+                self._hot_cache[job_id] = state
                 
-        await self.update_job(job_id, status=DownloadStatus.QUEUED)
+        await self.update_job(job_id, status=DownloadStatus.QUEUED, error=None, progress=0.0)
 
     async def count_jobs(self, status: str | None = None, engine: str | None = None, group_id: str | None = None) -> int:
         """Count total jobs matching filters."""
@@ -670,9 +733,6 @@ class QueueManager:
 
     async def clear_all_jobs(self) -> int:
         """Cancel all non-terminal jobs and wipe the hot cache. Returns count cleared."""
-        import logging
-        _log = logging.getLogger(__name__)
-
         async with self._lock:
             # Cancel any running tasks
             for state in self._hot_cache.values():
@@ -706,4 +766,3 @@ class QueueManager:
 
 # Global singleton instance
 queue_manager = QueueManager()
-

@@ -2,7 +2,7 @@
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-05-03
-**Feature**: [spec.md](file:///home/abdallah/Desktop/thunder/specs/006-auto-drm-pipeline/spec.md)
+**Feature**: [spec.md](file:///home/abdallah/Desktop/dark-downloader/specs/006-auto-drm-pipeline/spec.md)
 
 ## Content Quality
 

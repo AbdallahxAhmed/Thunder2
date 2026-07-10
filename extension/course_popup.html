@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thunder</title>
+  <link rel="stylesheet" href="course_popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">⚡ Thunder</div>
+        <div class="status-dot" id="status-dot" title="Backend offline"></div>
+      </div>
+      <div class="header-right">
+        <a href="http://localhost:8000/dashboard/index.html" target="_blank" class="dashboard-link">Dashboard ↗</a>
+      </div>
+    </header>
+
+    <!-- Tabs Nav -->
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="har">Course Files</button>
+      <button class="tab-btn" data-tab="yanfaa">Yanfaa</button>
+      <button class="tab-btn" data-tab="m3u8">M3U8 Batch</button>
+      <button class="tab-btn" data-tab="status">Downloads</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </nav>
+
+    <!-- Tab Content -->
+    <main class="content">
+      <!-- Course Files (HAR) Section -->
+      <section class="tab-pane active" id="pane-har">
+        <div class="form-group">
+          <label class="label">HAR File / Directory Path</label>
+          <input type="text" class="input" id="har-path" placeholder="D:\courses\course_logs.har">
+          <div class="hint">Path to a recorded HAR network log file.</div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-secondary" id="btn-scan-har">Scan Directory</button>
+          <button class="btn btn-primary" id="btn-extract-har">Extract Lessons</button>
+        </div>
+
+        <div class="grabber-section">
+          <label class="label" style="display: flex; align-items: center; gap: 6px;">
+            <span>⚡ Auto-Grabber</span>
+            <span class="badge" style="background: rgba(137,180,250,0.15); color: var(--accent); font-size: 0.58rem; padding: 1px 5px;">NEW</span>
+          </label>
+          <div class="hint" style="margin-bottom: 8px;">Crawl & download all videos sequentially from the active tab. Works with 2FA and locked lessons.</div>
+          <button class="btn btn-primary btn-block" id="btn-start-grab">⚡ Start Auto-Grab</button>
+        </div>
+        
+        <div id="har-lessons-area" class="lessons-area" style="display: none; margin-top: 14px;">
+          <div class="form-group">
+            <label class="label">Course Folder Name</label>
+            <input type="text" class="input" id="course-name" placeholder="course-name">
+          </div>
+          <div class="list-header">
+            <label class="label">Lessons</label>
+            <button class="select-all-btn" id="har-select-all">Select All</button>
+          </div>
+          <div class="list-container">
+            <ul class="checkbox-list" id="har-checkbox-list"></ul>
+          </div>
+          <div class="form-actions-row" style="margin-top: 10px;">
+            <label class="checkbox-wrap">
+              <input type="checkbox" id="use-scheduler-har">
+              <span>Use Scheduler</span>
+            </label>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary btn-sm" id="btn-browse-har-folder" style="padding: 6px 10px;" title="Set custom save directory for selected lessons">📁 Folder</button>
+              <button class="btn btn-secondary btn-sm" id="btn-complete-har" style="padding: 6px 10px; color: var(--success);" title="Mark selected lessons as completed (already downloaded)">✔ Complete</button>
+              <button class="btn btn-primary btn-sm" id="btn-download-har">Download</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Yanfaa Section -->
+      <section class="tab-pane" id="pane-yanfaa">
+        <div class="form-group">
+          <label class="label">Course Slug / URL</label>
+          <input type="text" class="input" id="yanfaa-slug" placeholder="course-slug-here">
+          <div class="hint">Slug from the course page URL path.</div>
+        </div>
+        <button class="btn btn-primary btn-block" id="btn-fetch-yanfaa">Fetch Videos</button>
+
+        <div id="yanfaa-lessons-area" class="lessons-area" style="display: none; margin-top: 14px;">
+          <div class="list-header">
+            <label class="label">Videos</label>
+            <button class="select-all-btn" id="yanfaa-select-all">Select All</button>
+          </div>
+          <div class="list-container">
+            <ul class="checkbox-list" id="yanfaa-checkbox-list"></ul>
+          </div>
+          <div style="display: flex; gap: 8px; margin-top: 10px;">
+            <button class="btn btn-secondary btn-sm" id="btn-browse-yanfaa-folder" style="flex: 1; padding: 6px 10px;" title="Set custom save directory for selected videos">📁 Folder</button>
+            <button class="btn btn-secondary btn-sm" id="btn-complete-yanfaa" style="flex: 1; padding: 6px 10px; color: var(--success);" title="Mark selected as completed">✔ Complete</button>
+            <button class="btn btn-primary btn-sm" id="btn-download-yanfaa" style="flex: 2;">Download</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Direct M3U8 Section -->
+      <section class="tab-pane" id="pane-m3u8">
+        <div class="form-group">
+          <label class="label">M3U8 URLs (One per line)</label>
+          <textarea class="input" id="m3u8-urls" rows="3" placeholder="https://.../manifest.m3u8"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="label">Video Titles (One per line, optional)</label>
+          <textarea class="input" id="m3u8-titles" rows="2" placeholder="01-Getting Started"></textarea>
+        </div>
+        <div class="form-group">
+          <label class="label">HTTP Referer (optional)</label>
+          <input type="text" class="input" id="m3u8-referer" placeholder="https://example.com/">
+        </div>
+        <div class="form-actions-row">
+          <label class="checkbox-wrap">
+            <input type="checkbox" id="use-scheduler-m3u8">
+            <span>Use Scheduler</span>
+          </label>
+          <button class="btn btn-primary btn-sm" id="btn-download-m3u8">Queue Downloads</button>
+        </div>
+      </section>
+
+      <!-- Downloads/Status Section -->
+      <section class="tab-pane" id="pane-status">
+        <div class="status-bulk-actions" style="display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">
+          <label class="checkbox-wrap" style="font-size: 0.75rem; margin-bottom: 0;">
+            <input type="checkbox" id="status-select-all">
+            <span>Select All</span>
+          </label>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn btn-secondary btn-sm" id="btn-bulk-resume" style="padding: 4px 8px; font-size: 0.7rem; color: var(--success);" title="Resume selected downloads">▶ Resume</button>
+            <button class="btn btn-secondary btn-sm" id="btn-bulk-cancel" style="padding: 4px 8px; font-size: 0.7rem; color: var(--error);" title="Cancel selected downloads">⏹ Cancel</button>
+            <button class="btn btn-secondary btn-sm" id="btn-bulk-delete" style="padding: 4px 8px; font-size: 0.7rem; opacity: 0.8;" title="Remove selected from history">🗑 Delete</button>
+          </div>
+        </div>
+        <div class="list-container" style="max-height: 240px;">
+          <ul class="status-list" id="status-jobs-list">
+            <li class="empty">No active downloads</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Settings Section -->
+      <section class="tab-pane" id="pane-settings">
+        <div class="form-group">
+          <label class="label">Download Location (Path)</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" class="input" id="setting-download-dir" placeholder="downloads" style="flex: 1;">
+            <button class="btn btn-secondary" id="btn-popup-browse" style="padding: 0 12px; white-space: nowrap; font-size: 0.8rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); cursor: pointer;">Browse...</button>
+          </div>
+          <div class="hint">Absolute path or relative folder where downloaded files will be saved.</div>
+        </div>
+        <div class="form-group">
+          <label class="label">Global Concurrency Limit</label>
+          <input type="number" class="input" id="setting-concurrency" placeholder="8" min="1" max="32">
+          <div class="hint">Max simultaneous downloads.</div>
+        </div>
+        <div class="form-group">
+          <label class="label">Auto-Start Captures</label>
+          <select class="input" id="setting-auto-start" style="width: 100%; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 9px 12px; outline: none;">
+            <option value="true">Download Immediately</option>
+            <option value="false">Queue as Paused (Idle)</option>
+          </select>
+          <div class="hint">If disabled, captured videos will stay idle in queue until manually started.</div>
+        </div>
+        <button class="btn btn-primary btn-block" id="btn-save-settings">Save Settings</button>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <div class="popup-footer">
+      <span>Thunder v1.0 — Universal Download Manager</span>
+    </div>
+
+    <!-- Toast Overlay -->
+    <div id="toast" class="toast" style="display: none;"></div>
+  </div>
+
+  <!-- IDM-style Confirmation Modal -->
+  <div id="confirm-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>⚡ Start Download</h3>
+        <button class="modal-close" id="btn-modal-close">&times;</button>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="label">File Name (Title)</label>
+          <input type="text" class="input" id="modal-title" placeholder="Filename">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="label">Save Location</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" class="input" id="modal-download-dir" placeholder="downloads" style="flex: 1;">
+            <button class="btn btn-secondary" id="btn-modal-browse" style="padding: 0 12px; white-space: nowrap; font-size: 0.8rem; height: 36px; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); background: var(--bg-overlay); color: var(--text-primary); cursor: pointer;">Browse...</button>
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label class="label">Action</label>
+          <select class="input" id="modal-auto-start" style="width: 100%; background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-subtle); padding: 9px 12px; border-radius: var(--radius-sm); outline: none;">
+            <option value="true">Download Now</option>
+            <option value="false">Queue as Paused</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px;">
+        <button class="btn btn-secondary" id="btn-modal-cancel" style="padding: 8px 16px;">Cancel</button>
+        <button class="btn btn-primary" id="btn-modal-start" style="padding: 8px 20px;">Start Download</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="course_popup.js"></script>
+</body>
+</html>

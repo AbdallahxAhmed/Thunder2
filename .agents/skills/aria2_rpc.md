@@ -15,7 +15,7 @@ def add_download(url, rpc_secret="YOUR_TOKEN"):
     rpc_endpoint = "http://localhost:6800/jsonrpc"
     payload = {
         "jsonrpc": "2.0",
-        "id": "thunder",
+        "id": "dark-downloader",
         "method": "aria2.addUri",
         "params": [
             f"token:{rpc_secret}",

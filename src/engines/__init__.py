@@ -66,3 +66,12 @@ def _register_defaults() -> None:
         from src.engines.m3u8_client import M3u8Client
 
         register_engine("m3u8", M3u8Client())
+
+    # ── Course downloader engines (always registered) ─────────────
+    from src.engines.course_har_engine import CourseHAREngine
+    from src.engines.yanfaa_engine import YanfaaEngine
+    from src.engines.course_m3u8_engine import CourseM3U8Engine
+
+    register_engine("course_har", CourseHAREngine())
+    register_engine("yanfaa", YanfaaEngine())
+    register_engine("course_m3u8", CourseM3U8Engine())

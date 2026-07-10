@@ -15,7 +15,6 @@ env/
 # Runtime directories
 downloads/
 logs/
-data/
 
 # IDE
 .vscode/
@@ -48,3 +47,10 @@ drm_*/
 *.tmp
 *.wvd
 *.mp4
+
+# Binaries & runtime data
+bin/
+.tools/
+data/
+[0-9]*
+*.exe

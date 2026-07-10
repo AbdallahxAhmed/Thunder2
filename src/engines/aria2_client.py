@@ -44,7 +44,7 @@ class Aria2Client:
 
         payload = {
             "jsonrpc": "2.0",
-            "id": "thunder",
+            "id": "dark-downloader",
             "method": method,
             "params": all_params,
         }
@@ -62,13 +62,15 @@ class Aria2Client:
         user_agent: str | None = None,
         cookies: str | None = None,
         referer: str | None = None,
+        download_dir: str | None = None,
     ) -> str:
         """Submit a new download and return the aria2 GID."""
+        target_dir = download_dir or self.download_dir
         options: dict[str, str] = {
             "split": "16",
             "max-connection-per-server": "16",
             "min-split-size": "1M",
-            "dir": os.path.abspath(self.download_dir),
+            "dir": os.path.abspath(target_dir),
         }
         if user_agent:
             options["user-agent"] = user_agent
@@ -107,6 +109,7 @@ class Aria2Client:
             user_agent=request.user_agent,
             cookies=request.cookies,
             referer=getattr(request, 'referer', None),
+            download_dir=getattr(request, 'download_dir', None),
         )
 
         # Poll until completion

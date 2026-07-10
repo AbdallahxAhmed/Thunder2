@@ -66,10 +66,16 @@ class DownloadRequest(BaseModel):
         default=None, description="HTTP Referer header for the download"
     )
     engine: Optional[str] = Field(
-        default=None, description="Explicit engine override (aria2, ytdlp, m3u8)"
+        default=None, description="Explicit engine override"
+    )
+    download_dir: Optional[str] = Field(
+        default=None, description="Custom download directory override for this specific job"
     )
     format_id: Optional[str] = Field(
         default=None, description="yt-dlp format ID for quality selection (e.g., '137+140')"
+    )
+    auto_download: bool = Field(
+        default=True, description="Start downloading immediately"
     )
 
     @field_validator("url")
@@ -104,14 +110,14 @@ class DownloadRequest(BaseModel):
     @classmethod
     def validate_engine(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
-            valid = {"aria2", "ytdlp", "m3u8"}
+            valid = {"aria2", "ytdlp", "m3u8", "yanfaa", "course_har", "course_m3u8"}
             if v not in valid:
                 raise ValueError(f"engine must be one of: {', '.join(sorted(valid))}")
         return v
 
 
 # ---------------------------------------------------------------------------
-# Internal job model
+# Internal job/group models
 # ---------------------------------------------------------------------------
 
 class DownloadJob(BaseModel):
@@ -146,6 +152,8 @@ class DownloadJob(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc)
     )
     aria2_gid: Optional[str] = None
+    request_payload: Optional[DownloadRequest] = None
+
 
 class DownloadGroup(BaseModel):
     """Tracks a group of download jobs (e.g., a playlist)."""
@@ -248,6 +256,7 @@ class InfoRequest(BaseModel):
     cookies: Optional[Any] = Field(default=None)
     user_agent: Optional[str] = Field(default=None)
 
+
 class InfoResponse(BaseModel):
     """Response for GET /api/info."""
 
@@ -267,9 +276,8 @@ class InfoResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Phase 7: Queue Management API models
+# Queue Management API models
 # ---------------------------------------------------------------------------
-
 
 class JobActionResponse(BaseModel):
     """Response for job action endpoints (pause, resume, cancel, retry, delete)."""
@@ -363,3 +371,111 @@ class SettingsUpdateRequest(BaseModel):
         ..., description="Key-value pairs to update"
     )
 
+
+# ---------------------------------------------------------------------------
+# Course downloader models
+# ---------------------------------------------------------------------------
+
+
+class ScheduleConfig(BaseModel):
+    """Human-like download scheduling parameters."""
+
+    min_wait_minutes: int = Field(default=2, ge=1, le=60)
+    max_wait_minutes: int = Field(default=8, ge=1, le=120)
+    start_hour: int = Field(default=8, ge=0, le=23)
+    end_hour: int = Field(default=23, ge=0, le=23)
+    max_videos_per_day: int = Field(default=25, ge=1, le=200)
+    long_break_probability: float = Field(default=0.1, ge=0.0, le=1.0)
+    long_break_min: int = Field(default=15, ge=1)
+    long_break_max: int = Field(default=30, ge=1)
+
+
+class CourseHARRequest(BaseModel):
+    """Request to extract/download from a HAR file."""
+
+    har_path: str = Field(..., min_length=1, description="Path to HAR file")
+    course_name: Optional[str] = Field(default=None, description="Course folder name")
+    download_path: Optional[str] = Field(default=None, description="Override download directory")
+    auto_download: bool = Field(default=False, description="Start downloading immediately")
+    use_scheduler: bool = Field(default=False, description="Use human-like delays")
+    schedule: Optional[ScheduleConfig] = None
+    video_indices: Optional[list[int]] = Field(default=None, description="Indices of videos to download")
+    download_dirs: Optional[dict[str, str]] = Field(default=None, description="Mapping of video index to custom download directory")
+
+
+class CourseHARResponse(BaseModel):
+    """Response from HAR extraction."""
+
+    urls: list[str]
+    names: list[str]
+    missing_lessons: list[int]
+    total_found: int
+    job_ids: list[str] = Field(default_factory=list)
+
+
+class YanfaaCourseRequest(BaseModel):
+    """Request to fetch/download a Yanfaa course."""
+
+    course_slug: str = Field(..., min_length=1, description="Yanfaa course slug")
+    video_indices: Optional[list[int]] = Field(
+        default=None, description="Indices of videos to download (None = all)"
+    )
+    download_path: Optional[str] = None
+    download_dirs: Optional[dict[str, str]] = Field(default=None, description="Mapping of video index to custom download directory")
+    auto_download: bool = Field(default=True, description="Start downloading immediately")
+
+
+class YanfaaVideoInfo(BaseModel):
+    """Single video entry in a Yanfaa course."""
+
+    index: int
+    brightcove_id: str
+    title: str
+    duration: Optional[float] = None
+    duration_human: Optional[str] = None
+    chapter: Optional[str] = None
+
+
+class YanfaaCourseResponse(BaseModel):
+    """Response from Yanfaa course info fetch."""
+
+    title: str
+    slug: str
+    videos: list[YanfaaVideoInfo]
+    total_videos: int
+
+
+class BatchM3U8Request(BaseModel):
+    """Request to batch-download M3U8 URLs."""
+
+    urls: list[str] = Field(..., min_length=1)
+    names: Optional[list[str]] = None
+    download_path: Optional[str] = None
+    referer: Optional[str] = None
+    origin: Optional[str] = None
+    use_scheduler: bool = False
+    schedule: Optional[ScheduleConfig] = None
+    auto_download: bool = Field(default=True, description="Start downloading immediately")
+
+
+class BatchM3U8Response(BaseModel):
+    """Response from batch M3U8 download submission."""
+
+    job_ids: list[str]
+    total: int
+
+
+class AuthExtractRequest(BaseModel):
+    """Request to launch browser-based auth extraction."""
+
+    url: str = Field(..., min_length=1, description="Login page URL")
+    platform: str = Field(default="cloudnative", description="Platform identifier")
+
+
+class AuthSession(BaseModel):
+    """Info about a saved auth session."""
+
+    platform: str
+    file: str
+    cookies_count: int
+    has_token: bool

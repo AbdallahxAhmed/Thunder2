@@ -1,4 +1,4 @@
-# Research: Unified Headless Download Daemon (Thunder)
+# Research: Unified Headless Download Daemon (UHDD)
 
 **Date**: 2026-04-26
 **Feature**: [spec.md](spec.md)
@@ -116,7 +116,7 @@ If persistence is needed later, a SQLite upgrade is straightforward.
 ## R6: Structured Logging
 
 **Decision**: Python `logging` module with a custom JSON formatter writing to
-`logs/thunder.log`. Correlation via `download_id` field on every log entry.
+`logs/uhdd.log`. Correlation via `download_id` field on every log entry.
 Sensitive fields (tokens, keys) redacted by a filter.
 
 **Rationale**: Constitution Principle V mandates JSON structured logs with correlation IDs.

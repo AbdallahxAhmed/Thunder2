@@ -47,7 +47,7 @@ A user clicks the "RAW" format button on a DRM-protected page. The `TRIGGER_DOWN
 
 **Why this priority**: This is the critical bridge between the UI and the backend DRM pipeline. Without it, clicking "RAW" sends a bare URL that will fail on any DRM-protected stream. Co-P1 with US1 because together they complete the payload.
 
-**Independent Test**: Navigate to a DRM-protected streaming page (e.g., a DASH stream with Widevine). Wait for `eme_hook.js` to capture the PSSH and license URL (visible in the background console as `[Thunder SW] DRM package cached`). Click the RAW button. Inspect the `TRIGGER_DOWNLOAD` payload — it should contain `pssh`, `license_url`, and `license_headers`.
+**Independent Test**: Navigate to a DRM-protected streaming page (e.g., a DASH stream with Widevine). Wait for `eme_hook.js` to capture the PSSH and license URL (visible in the background console as `[UHDD SW] DRM package cached`). Click the RAW button. Inspect the `TRIGGER_DOWNLOAD` payload — it should contain `pssh`, `license_url`, and `license_headers`.
 
 **Acceptance Scenarios**:
 

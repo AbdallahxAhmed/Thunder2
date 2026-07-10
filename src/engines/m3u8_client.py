@@ -30,8 +30,11 @@ class M3u8Client:
 
     def _sanitize_filename(self, name: str) -> str:
         """Strip invalid filesystem characters and truncate to safe length."""
+        # Replace shell operators to avoid any terminal command breaking
+        name = name.replace("&&", "and").replace("||", "or")
+        name = name.replace("&", "and").replace("|", "or")
         # Remove characters invalid on Windows/Linux/macOS
-        clean = re.sub(r'[/\\:*?"<>|]', '', name)
+        clean = re.sub(r'[/\\:*?"<>]', '', name)
         # Collapse whitespace
         clean = re.sub(r'\s+', ' ', clean).strip()
         # Truncate to 200 chars (excluding extension) per spec
@@ -103,7 +106,8 @@ class M3u8Client:
         2. Build N_m3u8DL-RE command with --key flags
         3. Execute subprocess and capture output
         """
-        save_dir = os.path.abspath(self.download_dir)
+        target_dir = getattr(request, 'download_dir', None) or self.download_dir
+        save_dir = os.path.abspath(target_dir)
         save_name = self._generate_save_name(request.url, request.title)
 
         # ── Smart Title Fallback (Python-side) ────────────────────────
@@ -128,6 +132,26 @@ class M3u8Client:
                         save_name = slug.replace('-', ' ').title()
             except Exception:
                 pass
+
+        # Check if output file already exists (skip execution if so)
+        os.makedirs(save_dir, exist_ok=True)
+        for ext in (".mp4", ".mkv", ".ts"):
+            candidate = os.path.join(save_dir, save_name + ext)
+            if os.path.exists(candidate):
+                logger.info(
+                    "Output file already exists, skipping download: %s",
+                    candidate,
+                    extra={
+                        "download_id": job.id,
+                        "engine": "m3u8",
+                        "event": "download.completed",
+                    },
+                )
+                return {
+                    "status": "completed",
+                    "output_path": candidate,
+                    "file_size": os.path.getsize(candidate),
+                }
 
         # ── Step 1: Resolve keys ──────────────────────────────────────
         try:
@@ -218,36 +242,56 @@ class M3u8Client:
 
         # ── Step 3: Execute ───────────────────────────────────────────
         try:
-            import time
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-            )
-            
-            # Poll process and check for cancellation
-            while process.poll() is None:
-                if getattr(job, '_cancel_flag', False):
-                    process.terminate()
-                    process.wait(timeout=5)
-                    raise InterruptedError("Job was cancelled by QueueManager")
-                time.sleep(1)
-                
-            stdout, stderr = process.communicate()
-            
-            # Log captured output
-            if stdout:
-                logger.debug(
-                    "N_m3u8DL-RE stdout: %s",
-                    stdout[:2000],
-                    extra={"download_id": job.id, "engine": "m3u8"},
-                )
-            if stderr:
-                logger.debug(
-                    "N_m3u8DL-RE stderr: %s",
-                    stderr[:2000],
-                    extra={"download_id": job.id, "engine": "m3u8"},
-                )
+            creationflags = 0
+            if os.name == 'nt':
+                creationflags = 0x08000000  # CREATE_NO_WINDOW (hides the black console window)
 
-            if process.returncode == 0:
+            # We redirect stderr to stdout so we can capture everything in one stream
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                creationflags=creationflags,
+            )
+
+            # Compile regex patterns for parsing progress and speed
+            pct_pattern = re.compile(r"(\d+(?:\.\d+)?)%")
+            speed_pattern = re.compile(r"(\d+(?:\.\d+)?)\s*(?:MB|KB|Gb|kb)/s", re.IGNORECASE)
+
+            # Read stdout line by line in real-time
+            stdout_lines = []
+            while True:
+                line = process.stdout.readline()
+                if not line:
+                    break
+                
+                line_str = line.strip()
+                if line_str:
+                    stdout_lines.append(line_str)
+                    
+                    # Parse progress percentage
+                    pct_match = pct_pattern.search(line_str)
+                    if pct_match:
+                        try:
+                            pct_val = float(pct_match.group(1))
+                            # Ensure we don't go backwards if log output is out of order
+                            if job.progress is None or pct_val > job.progress:
+                                job.progress = round(pct_val, 1)
+                        except ValueError:
+                            pass
+                    
+                    # Parse download speed
+                    speed_match = speed_pattern.search(line_str)
+                    if speed_match:
+                        job.speed = speed_match.group(0)
+
+            process.wait()
+            returncode = process.returncode
+            stdout_full = "\n".join(stdout_lines)
+
+            if returncode == 0:
                 # Look for output file
                 output_path = os.path.join(save_dir, save_name)
                 # N_m3u8DL-RE may append an extension
@@ -279,7 +323,7 @@ class M3u8Client:
                     "file_size": file_size,
                 }
             else:
-                error_msg = stderr.strip() or f"N_m3u8DL-RE exited with code {process.returncode}"
+                error_msg = f"N_m3u8DL-RE exited with code {returncode}\nLast output: " + ("\n".join(stdout_lines[-5:]) if stdout_lines else "None")
                 logger.error(
                     "N_m3u8DL-RE failed: %s — %s",
                     job.id,
@@ -291,6 +335,7 @@ class M3u8Client:
                     },
                 )
                 return {"status": "failed", "error": error_msg}
+
 
         except subprocess.TimeoutExpired:
             error_msg = "N_m3u8DL-RE timed out after 3600 seconds"

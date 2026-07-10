@@ -11,7 +11,7 @@
 
 ### User Story 1 - Format Discovery & Quality Selection (Priority: P1)
 
-A user navigates to a supported media site (YouTube, Twitter/X, Vimeo, etc.) and clicks the extension icon. The popup opens, automatically detects the active tab's URL, and queries the Thunder daemon for available download formats. The popup displays a clean, grouped list of video formats (with resolution and codec info) and audio-only formats. The user clicks their preferred format, and the download is dispatched to the daemon using yt-dlp with that specific format.
+A user navigates to a supported media site (YouTube, Twitter/X, Vimeo, etc.) and clicks the extension icon. The popup opens, automatically detects the active tab's URL, and queries the UHDD daemon for available download formats. The popup displays a clean, grouped list of video formats (with resolution and codec info) and audio-only formats. The user clicks their preferred format, and the download is dispatched to the daemon using yt-dlp with that specific format.
 
 **Why this priority**: This is the core value proposition — giving users control over download quality instead of always defaulting to "best". Without this, the extension offers no interactive download selection.
 
@@ -43,7 +43,7 @@ A user clicks the extension icon while on a page that is not a recognized media 
 
 ### User Story 3 - Daemon Offline Resilience (Priority: P2)
 
-A user clicks the extension icon on a media page, but the Thunder daemon is not running. The popup shows an appropriate error state indicating the backend is unreachable, rather than hanging indefinitely or crashing.
+A user clicks the extension icon on a media page, but the UHDD daemon is not running. The popup shows an appropriate error state indicating the backend is unreachable, rather than hanging indefinitely or crashing.
 
 **Why this priority**: The daemon may not always be running. Users need clear feedback about connectivity issues so they can take corrective action.
 
@@ -51,14 +51,14 @@ A user clicks the extension icon on a media page, but the Thunder daemon is not 
 
 **Acceptance Scenarios**:
 
-1. **Given** the daemon is not running, **When** the user opens the popup on a media page, **Then** the popup transitions from loading to an error state displaying "Backend offline — start the Thunder daemon."
+1. **Given** the daemon is not running, **When** the user opens the popup on a media page, **Then** the popup transitions from loading to an error state displaying "Backend offline — start the UHDD daemon."
 2. **Given** the daemon becomes unreachable mid-interaction (e.g., during format dispatch), **When** the download request fails, **Then** the popup displays an error message without crashing.
 
 ---
 
 ### User Story 4 - Premium Dark Theme Visual Experience (Priority: P3)
 
-The popup presents a visually premium dark-themed interface with smooth animations and modern aesthetics that reflects the quality of the Thunder project. The UI uses a carefully curated color palette, modern typography, and subtle micro-animations.
+The popup presents a visually premium dark-themed interface with smooth animations and modern aesthetics that reflects the quality of the UHDD project. The UI uses a carefully curated color palette, modern typography, and subtle micro-animations.
 
 **Why this priority**: Visual polish enhances user trust and engagement. A professional UI differentiates the extension from basic download tools.
 
@@ -125,7 +125,7 @@ The popup presents a visually premium dark-themed interface with smooth animatio
 
 ## Assumptions
 
-- The Thunder daemon is running locally on `http://localhost:8000`.
+- The UHDD daemon is running locally on `http://localhost:8000`.
 - The user has Chrome 102+ with Manifest V3 support.
 - yt-dlp is installed and available as a Python module in the daemon environment.
 - The popup is a browser action popup (not a new tab or sidebar).

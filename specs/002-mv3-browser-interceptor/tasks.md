@@ -44,7 +44,7 @@
 
 - [ ] T007 [P] [US5] Add `content_scripts` block for `content.js` and `content.css` to `extension/manifest.json`.
 - [ ] T008 [P] [US5] Update `getFormats` message handler in `extension/background.js` to fallback to `sender.tab.id` and `sender.tab.url`.
-- [ ] T009 [P] [US5] Create `extension/content.css` with scoped dark-theme styles for floating button and dropdown (`--thunder-*` prefixed).
+- [ ] T009 [P] [US5] Create `extension/content.css` with scoped dark-theme styles for floating button and dropdown (`--uhdd-*` prefixed).
 - [x] T010 [US5] Code Purge: Surgically remove legacy CSS positioning variables to prepare for absolute coordinate tracking.
 - [x] T011 [US5] Implement Draggable Ghost Overlay Tracking System with root-level injection to `document.documentElement`, absolute positioning (`left`/`top`), and drag offsets.
 - [x] T012 [US5] Implement Anchor & Track with Anti-Jank Observers (`ResizeObserver`, `IntersectionObserver`, window `scroll` events) synced via `window.requestAnimationFrame`.

@@ -1,6 +1,6 @@
-# Feature Specification: Unified Headless Download Daemon (Thunder)
+# Feature Specification: Unified Headless Download Daemon (UHDD)
 
-**Feature Branch**: `001-thunder-download-daemon`
+**Feature Branch**: `001-uhdd-download-daemon`
 **Created**: 2026-04-26
 **Status**: Draft
 **Input**: User description: "Headless, API-driven backend daemon that intercepts, routes, and executes download requests from a browser extension — routing between aria2, yt-dlp, and N_m3u8DL-RE engines."
