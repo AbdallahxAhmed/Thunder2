@@ -472,7 +472,7 @@ function destroyPill(video) {
   const instance = pillRegistry.get(video);
   if (!instance) return;
 
-  // Don't destroy immediately — give SPA 500ms to insert a replacement <video>
+  // Don't destroy immediately — give SPA 2000ms to insert a replacement <video>
   if (pendingDestroys.has(video)) return; // already scheduled
 
   const timeoutId = setTimeout(() => {
@@ -484,7 +484,7 @@ function destroyPill(video) {
     for (const v of allVideos) {
       if (!pillRegistry.has(v) && v !== video) {
         const rect = v.getBoundingClientRect();
-        if (rect.width >= 150 && rect.height >= 150) {
+        if (rect.width >= 50 && rect.height >= 50) {
           replacementVideo = v;
           break;
         }
@@ -513,7 +513,7 @@ function destroyPill(video) {
       instance.element.parentNode.removeChild(instance.element);
     }
     pillRegistry.delete(video);
-  }, 500);
+  }, 2000);
 
   pendingDestroys.set(video, timeoutId);
 }
