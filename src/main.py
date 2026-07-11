@@ -10,8 +10,21 @@ import asyncio
 from datetime import datetime
 import logging
 import os
+import sys
 import time
 import uuid
+
+# ── Path Injection for Bundled Binaries (N_m3u8DL-RE, mp4decrypt, aria2c) ──
+if hasattr(sys, "_MEIPASS"):
+    mei_bin = os.path.join(sys._MEIPASS, "bin")
+    if os.path.isdir(mei_bin) and mei_bin not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = mei_bin + os.pathsep + os.environ.get("PATH", "")
+
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+local_bin = os.path.join(base_dir, "bin")
+if os.path.isdir(local_bin) and local_bin not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = local_bin + os.pathsep + os.environ.get("PATH", "")
+
 from contextlib import asynccontextmanager
 from typing import Any
 

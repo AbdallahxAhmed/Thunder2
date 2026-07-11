@@ -69,7 +69,6 @@ class WidevineCDM:
         license_url: str,
         license_headers: dict[str, Any] | None = None,
         video_url: str | None = None,
-        cookies: Any | None = None,
     ) -> list[str]:
         """Negotiate with a license server and return KID:KEY pairs.
 
@@ -94,12 +93,6 @@ class WidevineCDM:
         if "content-type" not in header_keys_lower:
             headers["Content-Type"] = "application/octet-stream"
 
-        if cookies:
-            if isinstance(cookies, str):
-                headers["Cookie"] = cookies
-            elif isinstance(cookies, list):
-                cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies if 'name' in c and 'value' in c)
-                headers["Cookie"] = cookie_str
 
         if video_url:
             from urllib.parse import urlparse
