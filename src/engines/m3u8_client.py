@@ -77,6 +77,7 @@ class M3u8Client:
                     license_url=request.license_url,
                     license_headers=request.license_headers,
                     video_url=request.page_url or request.url,
+                    cookies=request.cookies,
                 )
                 return keys
             except Exception as exc:
