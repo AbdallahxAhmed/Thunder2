@@ -206,25 +206,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     let url = message.url;
     if (sender.tab && sender.tab.url) {
       const isMainFrame = sender.frameId === 0;
-      let isEmbed = false;
-      if (message.url) {
-        try {
-          const hostname = new URL(message.url).hostname.toLowerCase();
-          isEmbed = [
-            "mediadelivery.net",
-            "b-cdn.net",
-            "vimeo.com",
-            "wistia.com",
-            "wistia.net",
-            "youtube.com",
-            "youtu.be",
-            "dailymotion.com"
-          ].some(domain => hostname.includes(domain));
-        } catch (e) {
-          isEmbed = false;
-        }
-      }
-      if (isMainFrame || !isEmbed) {
+      if (isMainFrame || !url) {
         url = sender.tab.url;
       }
     }
@@ -385,30 +367,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         payload.title = resolvedTitle;
       }
 
-      // Override URL with the tab's top-level page URL so that content scripts
-      // running inside player iframes (e.g. geo.dailymotion.com/player/…) never
-      // submit the embed URL to the daemon — same pattern as GET_HYBRID_STREAMS.
+      // If triggered from main frame or no URL provided, use top-level tab URL.
+      // If triggered from sub-frame, keep payload.url (the iframe/embed video URL).
       if (payload.format_id !== "raw-intercept" && sender.tab?.url) {
         const isMainFrame = sender.frameId === 0;
-        let isEmbed = false;
-        if (payload.url) {
-          try {
-            const hostname = new URL(payload.url).hostname.toLowerCase();
-            isEmbed = [
-              "mediadelivery.net",
-              "b-cdn.net",
-              "vimeo.com",
-              "wistia.com",
-              "wistia.net",
-              "youtube.com",
-              "youtu.be",
-              "dailymotion.com"
-            ].some(domain => hostname.includes(domain));
-          } catch (e) {
-            isEmbed = false;
-          }
-        }
-        if (isMainFrame || !isEmbed) {
+        if (isMainFrame || !payload.url) {
           payload.url = sender.tab.url;
         }
       }

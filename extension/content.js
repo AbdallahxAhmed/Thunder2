@@ -499,6 +499,7 @@ function destroyPill(video) {
       if (intersectionObserver) { intersectionObserver.unobserve(video); intersectionObserver.observe(replacementVideo); }
       instance.video = replacementVideo;
       pillRegistry.set(replacementVideo, instance);
+      triggerActivity(6000); // Re-arm idle activity timer for transferred pill instance
       schedulePositionUpdate();
       return;
     }
@@ -1441,6 +1442,12 @@ function triggerVideoPlayback() {
         } else if (src.includes('youtube.com')) {
           iframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
           console.log(`${LOG} Sent play command to YouTube iframe`);
+        } else if (src.includes('mediadelivery.net') || src.includes('b-cdn.net')) {
+          iframe.contentWindow.postMessage(
+            JSON.stringify({ context: 'player.js', version: '0.0.11', method: 'play' }),
+            '*'
+          );
+          console.log(`${LOG} Sent player.js play command to Bunny Stream iframe`);
         }
       } catch {}
     });
@@ -1493,6 +1500,7 @@ async function handleAutoGrab() {
 
     const urls = store.thunder_grab_urls || [];
     let currentIdx = parseInt(store.thunder_grab_index || "0");
+    updateGrabCounter(currentIdx + 1, urls.length > 0 ? urls.length : 1);
 
     // Align index logic removed to prevent infinite redirect loops
     
@@ -1537,7 +1545,12 @@ async function handleAutoGrab() {
       if (manifest) break;
       
       secondsWaited++;
-      if (secondsWaited > 8) {
+      if (secondsWaited > 45) {
+        console.warn(`${LOG} Stream interception timed out after 45s. Moving to next lesson.`);
+        updateGrabStatus("Stream timeout (45s). Skipping to next lesson...");
+        await humanDelay(1500, 2000);
+        break;
+      } else if (secondsWaited > 8) {
         updateGrabStatus("Waiting for Cloudflare Turnstile or Video Playback...");
       } else {
         updateGrabStatus("Intercepting keys...");
@@ -1609,14 +1622,16 @@ async function handleAutoGrab() {
           const oldUrl = location.href;
           completionBtn.click();
           await humanDelay(3500, 4500); // Wait for LMS navigation
+          isGrabInProgress = false;
           
           // Only redirect if the URL hasn't changed (meaning the click didn't navigate us)
           if (location.href === oldUrl) {
+            updateGrabCounter(nextIdx + 1, urls.length);
             updateGrabStatus(`Navigating to lesson ${nextIdx + 1}/${urls.length}...`);
-            isGrabInProgress = false;
             window.location.href = urls[nextIdx];
           }
         } else {
+          updateGrabCounter(nextIdx + 1, urls.length);
           updateGrabStatus(`Navigating to lesson ${nextIdx + 1}/${urls.length}...`);
           isGrabInProgress = false;
           window.location.href = urls[nextIdx];
@@ -1630,6 +1645,7 @@ async function handleAutoGrab() {
         simulateMouseMove();
         await humanDelay(800, 1500);
         completionBtn.click();
+        isGrabInProgress = false;
       } else {
         finishGrab();
       }
