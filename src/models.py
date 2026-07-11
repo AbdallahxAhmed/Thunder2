@@ -89,6 +89,34 @@ class DownloadRequest(BaseModel):
             raise ValueError(
                 "URL must start with http://, https://, ftp://, or magnet:"
             )
+        
+        # SSRF checks
+        from src.config import settings
+        from urllib.parse import urlparse
+        import ipaddress
+        
+        try:
+            parsed = urlparse(v)
+            hostname = parsed.hostname
+            if hostname and not settings.allow_local_downloads:
+                clean_host = hostname.strip("[]")
+                is_ip = False
+                try:
+                    ip = ipaddress.ip_address(clean_host)
+                    is_ip = True
+                    if ip.is_private or ip.is_loopback or ip.is_multicast or ip.is_reserved or ip.is_link_local:
+                        raise ValueError("Downloads from private or local network addresses are disabled for security.")
+                except ValueError as ip_err:
+                    if "disabled for security" in str(ip_err):
+                        raise
+                
+                if not is_ip:
+                    hostname_lower = hostname.lower()
+                    if hostname_lower in ("localhost", "localhost.localdomain") or hostname_lower.endswith(".local") or hostname_lower.endswith(".internal"):
+                        raise ValueError("Downloads from local hostnames are disabled for security.")
+        except Exception as e:
+            if isinstance(e, ValueError):
+                raise
         return v
 
     @field_validator("drm_keys")

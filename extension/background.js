@@ -8,6 +8,40 @@ const DAEMON_URL = "http://localhost:8000/api/download";
 const DAEMON_INFO_URL = "http://localhost:8000/api/info";
 const LOG = "[Thunder SW]";
 
+let apiToken = "";
+
+async function getAuthHeaders() {
+  if (!apiToken) {
+    try {
+      const response = await fetch("http://localhost:8000/api/auth/token");
+      if (response.ok) {
+        const data = await response.json();
+        apiToken = data.token;
+        chrome.storage.local.set({ thunder_api_token: apiToken });
+        console.log(`${LOG} Retrieved API Token successfully`);
+      }
+    } catch (e) {
+      console.error(`${LOG} Failed to fetch API Token:`, e);
+    }
+  }
+  return {
+    "Content-Type": "application/json",
+    ...(apiToken ? { "Authorization": `Bearer ${apiToken}` } : {})
+  };
+}
+
+// Retrieve token on startup/install
+chrome.runtime.onStartup.addListener(getAuthHeaders);
+chrome.runtime.onInstalled.addListener(getAuthHeaders);
+// Try loading from storage on load
+chrome.storage.local.get("thunder_api_token", (res) => {
+  if (res && res.thunder_api_token) {
+    apiToken = res.thunder_api_token;
+  } else {
+    getAuthHeaders();
+  }
+});
+
 // ─── Context Menu ────────────────────────────────────────────────────────
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -102,9 +136,10 @@ async function dispatchToUHDD(tabId) {
   console.log(`${LOG} Dispatching:`, JSON.stringify(payload, null, 2));
 
   try {
+    const authHeaders = await getAuthHeaders();
     const response = await fetch(DAEMON_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders,
       body: JSON.stringify(payload),
     });
 
@@ -277,7 +312,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const pageUrl = sender.tab?.url;
     const userAgent = navigator.userAgent;
 
-    const doFetch = (cookieList) => {
+    const doFetch = async (cookieList) => {
       console.log(`${LOG} Format cache MISS for tab ${tabId}, fetching…`);
       formatCache.set(tabId, { url, data: null, ts: 0, status: "fetching", drmHint });
       
@@ -288,9 +323,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         user_agent: userAgent
       };
 
+      const authHeaders = await getAuthHeaders();
       fetch(DAEMON_INFO_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders,
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(30_000)
       })
@@ -402,7 +438,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const pageUrl = sender.tab?.url;
       const userAgent = navigator.userAgent;
 
-      const doDownload = (cookieList) => {
+      const doDownload = async (cookieList) => {
         payload.user_agent = userAgent;
         if (cookieList && cookieList.length > 0) {
           payload.cookies = cookieList;
@@ -410,9 +446,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         console.log(`${LOG} Triggering download from content script:`, payload);
         
+        const authHeaders = await getAuthHeaders();
         fetch(DAEMON_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify(payload),
         })
         .then(resp => {
@@ -520,9 +557,10 @@ chrome.downloads.onCreated.addListener(async (downloadItem) => {
 
   // 5. Dispatch to daemon
   try {
+    const authHeaders = await getAuthHeaders();
     const response = await fetch(DAEMON_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders,
       body: JSON.stringify(payload),
     });
 

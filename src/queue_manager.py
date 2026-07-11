@@ -81,13 +81,14 @@ class QueueManager:
         # ── Startup Recovery: reset stale DOWNLOADING jobs to QUEUED ──────
         # Jobs stuck in DOWNLOADING from a previous crash will never complete
         # because their engine threads died.  Re-queue them so they get retried.
+        # PAUSED jobs are left as PAUSED to maintain persistence.
         async with get_db(self._db_path) as db:
             await db.execute(
-                "UPDATE jobs SET status = ? WHERE status IN (?, ?)",
-                (DownloadStatus.QUEUED.value, DownloadStatus.DOWNLOADING.value, DownloadStatus.PAUSED.value),
+                "UPDATE jobs SET status = ? WHERE status = ?",
+                (DownloadStatus.QUEUED.value, DownloadStatus.DOWNLOADING.value),
             )
             await db.commit()
-            _log.info("Startup recovery: reset stale jobs to QUEUED")
+            _log.info("Startup recovery: reset stale DOWNLOADING jobs to QUEUED")
 
         # Load non-terminal jobs into Hot Cache
         async with get_db(self._db_path) as db:

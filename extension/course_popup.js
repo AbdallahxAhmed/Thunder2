@@ -68,7 +68,14 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 // ── API Requests Helper ───────────────────────────────────────────────────
 async function request(path, method = 'GET', body = null) {
-  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  const token = await new Promise(resolve => {
+    chrome.storage.local.get("thunder_api_token", res => resolve(res ? res.thunder_api_token : ""));
+  });
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
   const resp = await fetch(`${API_BASE}${path}`, opts);
   if (!resp.ok) {

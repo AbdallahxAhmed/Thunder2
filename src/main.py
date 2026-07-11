@@ -7,6 +7,7 @@ All downloads execute as background tasks via ``asyncio.create_task`` +
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 import logging
 import os
 import time
@@ -14,11 +15,12 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect, Depends, Security, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import yt_dlp
 
 from src.config import settings
@@ -58,6 +60,7 @@ from src.models import (
     ScheduleConfig,
 )
 from src.router import classify
+from src.db import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +72,32 @@ _engine_health: list[Any] = []
 # ── Lifespan ──────────────────────────────────────────────────────────────
 
 
+API_TOKEN: str | None = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle hook."""
-    global _start_time, _engine_health
+    global API_TOKEN, _start_time, _engine_health
 
     # Initialize QueueManager FIRST — binds asyncio primitives to the running loop
     await queue_manager.start()
+
+    # Load or generate API Token
+    try:
+        async with get_db() as db:
+            cursor = await db.execute("SELECT value FROM settings WHERE key = 'api_token'")
+            row = await cursor.fetchone()
+            if row:
+                API_TOKEN = row["value"]
+            else:
+                import secrets
+                API_TOKEN = secrets.token_hex(32)
+                await db.execute("INSERT INTO settings (key, value) VALUES ('api_token', ?)", (API_TOKEN,))
+                await db.commit()
+        logger.info("API Token loaded successfully: %s", API_TOKEN)
+    except Exception as e:
+        logger.error("Failed to load/generate API Token: %s", e)
 
     # Load download_dir from DB settings if present to persist settings changes
     try:
@@ -119,6 +141,59 @@ async def lifespan(app: FastAPI):
     logger.info("Thunder shutting down", extra={"event": "daemon.shutdown"})
 
 
+security_bearer = HTTPBearer(auto_error=False)
+
+async def verify_api_token(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Security(security_bearer)
+):
+    # Bypass auth during unit tests
+    if os.environ.get("TESTING") == "True":
+        return
+
+    path = request.url.path
+    # Exclude non-API endpoints, health check, and same-origin token endpoints from auth
+    if path == "/api/health" or path == "/api/auth/token" or not path.startswith("/api/"):
+        return
+
+    # Check same-origin (dashboard / extension background script)
+    referer = request.headers.get("referer", "")
+    origin = request.headers.get("origin", "")
+    host = request.headers.get("host", "")
+    
+    is_local = any(h in host for h in ("localhost", "127.0.0.1"))
+    is_same_origin = False
+    
+    # 1. Local dashboard same-origin check
+    if is_local:
+        if referer and (f"http://{host}" in referer or f"https://{host}" in referer):
+            is_same_origin = True
+        elif origin and (f"http://{host}" in origin or f"https://{host}" in origin):
+            is_same_origin = True
+        elif not referer and not origin:
+            is_same_origin = True
+            
+    # 2. Chrome extension same-origin/privileged check
+    if origin and origin.startswith("chrome-extension://"):
+        is_same_origin = True
+    elif referer and referer.startswith("chrome-extension://"):
+        is_same_origin = True
+
+    if is_same_origin:
+        return
+
+    # 3. Fallback: validate Bearer token
+    if credentials and credentials.credentials == API_TOKEN:
+        return
+
+    # Check query param (useful for WebSockets/events)
+    token_param = request.query_params.get("token")
+    if token_param == API_TOKEN:
+        return
+
+    raise HTTPException(status_code=401, detail="Invalid or missing API Token")
+
+
 # ── App ───────────────────────────────────────────────────────────────────
 
 app = FastAPI(
@@ -126,16 +201,50 @@ app = FastAPI(
     description="Universal Headless DRM Downloader + Course Downloader",
     version="3.15.0",
     lifespan=lifespan,
+    dependencies=[Depends(verify_api_token)],
 )
 
-# CORS — allow extension popup and local dashboard
+# CORS — restrict origins to localhost/127.0.0.1 and chrome-extensions
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ],
+    allow_origin_regex="chrome-extension://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/api/auth/token")
+async def get_auth_token(request: Request):
+    """Retrieve the API token. Only allowed for same-origin or extension requests."""
+    referer = request.headers.get("referer", "")
+    origin = request.headers.get("origin", "")
+    host = request.headers.get("host", "")
+    
+    is_local = any(h in host for h in ("localhost", "127.0.0.1"))
+    is_same_origin = False
+    
+    if is_local:
+        if referer and (f"http://{host}" in referer or f"https://{host}" in referer):
+            is_same_origin = True
+        elif origin and (f"http://{host}" in origin or f"https://{host}" in origin):
+            is_same_origin = True
+        elif not referer and not origin:
+            is_same_origin = True
+            
+    if origin and origin.startswith("chrome-extension://"):
+        is_same_origin = True
+    elif referer and referer.startswith("chrome-extension://"):
+        is_same_origin = True
+        
+    if not is_same_origin:
+        return JSONResponse(status_code=403, content={"error": "Access denied"})
+        
+    return {"token": API_TOKEN}
 
 # ── Error handlers ────────────────────────────────────────────────────────
 
@@ -1269,6 +1378,41 @@ async def clear_queue() -> JSONResponse:
 @app.websocket("/api/ws/events")
 async def websocket_endpoint(websocket: WebSocket):
     """Real-time event stream for GUI clients (read-only)."""
+    # Bypass auth during unit tests
+    if os.environ.get("TESTING") == "True":
+        await websocket.accept()
+        await event_bus.connect(websocket)
+        try:
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            await event_bus.disconnect(websocket)
+        return
+
+    # Verify same-origin or query param token
+    token = websocket.query_params.get("token")
+    origin = websocket.headers.get("origin", "")
+    referer = websocket.headers.get("referer", "")
+    host = websocket.headers.get("host", "")
+    is_local = any(h in host for h in ("localhost", "127.0.0.1"))
+    is_same_origin = False
+    
+    if is_local:
+        if referer and (f"http://{host}" in referer or f"https://{host}" in referer):
+            is_same_origin = True
+        elif origin and (f"http://{host}" in origin or f"https://{host}" in origin):
+            is_same_origin = True
+            
+    if origin and origin.startswith("chrome-extension://"):
+        is_same_origin = True
+    elif referer and referer.startswith("chrome-extension://"):
+        is_same_origin = True
+        
+    if not is_same_origin and token != API_TOKEN:
+        # Reject connection with policy violation code
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
     await event_bus.connect(websocket)
     try:

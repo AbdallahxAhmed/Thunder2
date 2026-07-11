@@ -22,10 +22,11 @@ class Settings(BaseSettings):
     download_dir: str = "downloads"
     log_dir: str = "logs"
     log_level: str = "INFO"
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8000
     wvd_path: str = ""  # Path to Widevine Device (.wvd) file for CDM negotiation
     db_path: str = "data/thunder.db"
+    allow_local_downloads: bool = False
 
     # Course downloader settings
     course_data_dir: str = "data"  # Auth/cookie files storage

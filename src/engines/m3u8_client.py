@@ -30,17 +30,8 @@ class M3u8Client:
 
     def _sanitize_filename(self, name: str) -> str:
         """Strip invalid filesystem characters and truncate to safe length."""
-        # Replace shell operators to avoid any terminal command breaking
-        name = name.replace("&&", "and").replace("||", "or")
-        name = name.replace("&", "and").replace("|", "or")
-        # Remove characters invalid on Windows/Linux/macOS
-        clean = re.sub(r'[/\\:*?"<>]', '', name)
-        # Collapse whitespace
-        clean = re.sub(r'\s+', ' ', clean).strip()
-        # Truncate to 200 chars (excluding extension) per spec
-        if len(clean) > 200:
-            clean = clean[:200].strip()
-        return clean
+        from src.utils import sanitize_filename
+        return sanitize_filename(name)
 
     def _generate_save_name(self, url: str, title: str | None = None) -> str:
         """Generate a filesystem-safe name from the title or URL."""
@@ -107,7 +98,8 @@ class M3u8Client:
         3. Execute subprocess and capture output
         """
         target_dir = getattr(request, 'download_dir', None) or self.download_dir
-        save_dir = os.path.abspath(target_dir)
+        from src.utils import safe_resolve_path
+        save_dir = os.path.abspath(safe_resolve_path(self.download_dir, target_dir))
         save_name = self._generate_save_name(request.url, request.title)
 
         # ── Smart Title Fallback (Python-side) ────────────────────────

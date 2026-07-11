@@ -29,11 +29,14 @@ class YtdlpClient:
         format_str = request.format_id if getattr(request, 'format_id', None) else "bestvideo+bestaudio/best"
         
         target_dir = getattr(request, 'download_dir', None) or self.download_dir
+        from src.utils import safe_resolve_path, sanitize_filename
+        target_dir = safe_resolve_path(self.download_dir, target_dir)
         
         title_tmpl = "%(title).200s"
         if getattr(request, "title", None) and request.title.strip():
-            # Escape percent signs to prevent yt-dlp from parsing them as template fields
-            title_tmpl = request.title.strip().replace("%", "%%")
+            # Sanitize filename and escape percent signs to prevent template field parsing
+            sanitized_title = sanitize_filename(request.title.strip())
+            title_tmpl = sanitized_title.replace("%", "%%")
 
         opts: dict[str, Any] = {
             "format": format_str,
